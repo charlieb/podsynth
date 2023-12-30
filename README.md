@@ -1,19 +1,18 @@
-# Midi
+# PolySynth
 
 ## Author
 
-Shensley
+charlieb
 
 ## Description
-Midi Controlled oscillator with resonant LPF.  
+6 voice poly synth with midi for the Daisy Seed Pod.
 
-[Source Code](https://github.com/electro-smith/DaisyExamples/tree/master/pod/Midi)
+[Source Code](https://github.com/charlieb/polysynth/tree/master)
 
 ## Controls
 | Control | Description |
 | --- | --- |
-| CC 1 | Filter Cutoff |
-| CC 2 | Filter resonance |
+Nothing yet except midi mapping
 
 
 
