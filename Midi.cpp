@@ -17,6 +17,8 @@ static float vca_bias = 0.;
 static float vcf_freq = 440;
 static float vcf_res = 0;
 
+static daisy::Logger<daisy::LOGGER_INTERNAL> logger;
+
 
 enum class SynthControl {
   wave_shape,
@@ -77,29 +79,6 @@ void AudioCallback(daisy::AudioHandle::InterleavingInputBuffer  in,
   }
 }
 
-constexpr int maxlen = 512;
-static char buff[maxlen]{0,};
-static int pos = 0;
-void LogWrite() {
-  pod.seed.Print(buff);
-  memset(buff, 0, maxlen);
-  pos = 0;
-}
-
-void Log(const char* format, ...)
-{
-  std::va_list argptr;
-  char tmp[maxlen]{0,};
-
-  va_start(argptr, format);
-  vsprintf(tmp, format, argptr);
-  int addpos = strlen(tmp);
-  if(pos + addpos < maxlen) {
-    memcpy(buff + pos, tmp, addpos);
-  }
-  pos += addpos;
-  va_end(argptr);
-}
 
 // Typical Switch case for Message Type.
 void HandleMidiMessage(daisy::MidiEvent m)
@@ -108,7 +87,7 @@ void HandleMidiMessage(daisy::MidiEvent m)
     case daisy::NoteOn:
       {
         daisy::NoteOnEvent p = m.AsNoteOn();
-        Log("Note Received:\t%d\t%d\t%d\r\n", m.channel, m.data[0], m.data[1]);
+        logger.Print("Note Received:\t%d\t%d\t%d\r\n", m.channel, m.data[0], m.data[1]);
         // This is to avoid Max/MSP Note outs for now..
         if(m.data[1] != 0)
         {
@@ -128,93 +107,92 @@ void HandleMidiMessage(daisy::MidiEvent m)
     case daisy::ControlChange: 
       {
         daisy::ControlChangeEvent p = m.AsControlChange();
-        Log("Control Received:\t%d\t%d -> %i / %i\n", p.control_number, p.value, midi_map[p.control_number], SynthControl::wave_shape);
+        logger.Print("Control Received:\t%d\t%d -> %i / %i\n", p.control_number, p.value, midi_map[p.control_number], SynthControl::wave_shape);
         switch(midi_map[p.control_number]) {
           case SynthControl::wave_shape: 
             {
-              Log("Control Received: Waveform -> %d\r\n",static_cast<uint8_t>(p.value / 9));
+              logger.Print("Control Received: Waveform -> %d\r\n",static_cast<uint8_t>(p.value / 9));
               osc.SetWaveform(static_cast<uint8_t>(p.value / 9));
             }
             break;
           case SynthControl::vcf_cutoff:
             {
               vcf_freq = 20 + 20'000 * (p.value / 128.0);
-              Log("Control Received: vcf_freq -> %f\r\n", vcf_freq);
+              logger.Print("Control Received: vcf_freq -> %f\r\n", vcf_freq);
             }
             break;
           case SynthControl::vcf_resonance:
             {
               vcf_res = 20 + 20'000 * (p.value / 128.0);
-              Log("Control Received: vcf_res -> %f\r\n", vcf_res);
+              logger.Print("Control Received: vcf_res -> %f\r\n", vcf_res);
             }
             break;
           case SynthControl::vcf_envelope_depth:
             {
               vcf_env_depth = p.value / 128.0;
-              Log("Control Received: vcf_env_depth -> %f\r\n", vcf_env_depth);
+              logger.Print("Control Received: vcf_env_depth -> %f\r\n", vcf_env_depth);
             }
             break;
           case SynthControl::vca_bias:
             {
               vca_bias = p.value / 128.0;
-              Log("Control Received: vca_bias -> %f\r\n", vca_bias);
+              logger.Print("Control Received: vca_bias -> %f\r\n", vca_bias);
             }
             break;
           case SynthControl::envelope_a_vca:
             {
-              Log("Control Received: VCA Attack -> %f\r\n", p.value / 128.0);
+              logger.Print("Control Received: VCA Attack -> %f\r\n", p.value / 128.0);
               adsr_vca.SetAttackTime(p.value / 128.0); // secs
             }
             break;
           case SynthControl::envelope_d_vca:
             {
-              Log("Control Received: VCA Decay -> %f\r\n", p.value / 128.0);
+              logger.Print("Control Received: VCA Decay -> %f\r\n", p.value / 128.0);
               adsr_vca.SetDecayTime(p.value / 128.0); // secs
             }
             break;
           case SynthControl::envelope_s_vca:
             {
-              Log("Control Received: VCA Sustain -> %f\r\n", p.value / 128.0);
+              logger.Print("Control Received: VCA Sustain -> %f\r\n", p.value / 128.0);
               adsr_vca.SetSustainLevel(p.value / 128.0);
             }
             break;
           case SynthControl::envelope_r_vca:
             {
-              Log("Control Received: VCA Release -> %f\r\n", p.value / 128.0);
+              logger.Print("Control Received: VCA Release -> %f\r\n", p.value / 128.0);
               adsr_vca.SetReleaseTime(p.value / 128.0); // secs
             }
             break;
           case SynthControl::envelope_a_vcf:
             {
-              Log("Control Received: VCF Attack -> %f\r\n", p.value / 128.0);
+              logger.Print("Control Received: VCF Attack -> %f\r\n", p.value / 128.0);
               adsr_vcf.SetAttackTime(p.value / 128.0); // secs
             }
             break;
           case SynthControl::envelope_d_vcf:
             {
-              Log("Control Received: VCF Decay -> %f\r\n", p.value / 128.0);
+              logger.Print("Control Received: VCF Decay -> %f\r\n", p.value / 128.0);
               adsr_vcf.SetDecayTime(p.value / 128.0); // secs
             }
             break;
           case SynthControl::envelope_s_vcf:
             {
-              Log("Control Received: VCF Sustain -> %f\r\n", p.value / 128.0);
+              logger.Print("Control Received: VCF Sustain -> %f\r\n", p.value / 128.0);
               adsr_vcf.SetSustainLevel(p.value / 128.0);
             }
             break;
           case SynthControl::envelope_r_vcf:
             {
-              Log("Control Received: VCF Release -> %f\r\n", p.value / 128.0);
+              logger.Print("Control Received: VCF Release -> %f\r\n", p.value / 128.0);
               adsr_vcf.SetReleaseTime(p.value / 128.0); // secs
             }
             break;
           default: 
             {
-              Log("Control Received: Not Mapped -> %f\r\n", p.control_number);
+              logger.Print("Control Received: Not Mapped -> %f\r\n", p.control_number);
             }
             break;
         }
-        Log("End of switch\n");
         break;
       }
     default: break;
@@ -231,6 +209,7 @@ int main(void)
   pod.SetAudioBlockSize(4);
   pod.seed.usb_handle.Init(daisy::UsbHandle::FS_INTERNAL);
   daisy::System::Delay(250);
+  logger.StartLog();
 
   // Synthesis
   samplerate = pod.AudioSampleRate();
@@ -250,6 +229,5 @@ int main(void)
     {
       HandleMidiMessage(pod.midi.PopEvent());
     }
-    LogWrite();
   }
 }
