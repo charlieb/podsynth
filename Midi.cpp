@@ -1,5 +1,6 @@
 #include "daisy_pod.h"
 #include "daisysp.h"
+#include <util/MappedValue.h>
 #include <cstdio>
 #include <string.h>
 #include <unordered_map>
@@ -49,7 +50,7 @@ class SignalChain {
   private:
     // Some globals we just maintain references to
     float& vcf_env_depth;
-    float& vcf_freq;
+    daisy::MappedFloatValue& vcf_freq;
     float& vcf_res;
 
   public:
@@ -60,7 +61,7 @@ class SignalChain {
     daisysp::MoogLadder flt;
     daisysp::Adsr adsr_vca, adsr_vcf;
 
-    SignalChain(float& vcf_env_depth, float& vcf_freq, float& vcf_res)
+    SignalChain(float& vcf_env_depth, daisy::MappedFloatValue& vcf_freq, float& vcf_res)
       : vcf_env_depth(vcf_env_depth)
         , vcf_freq(vcf_freq)
         , vcf_res(vcf_res){
@@ -127,7 +128,7 @@ class SignalChain {
 static float vcf_env_depth = 0.;
 static float vca_env_depth = 0.;
 static float vca_bias = 0.;
-static float vcf_freq = 440;
+static daisy::MappedFloatValue vcf_freq{100, 20'000, 440, daisy::MappedFloatValue::Mapping::log, "Hz"};
 static float vcf_res = 0;
 
 static daisy::DaisyPod pod;
@@ -264,8 +265,8 @@ void HandleMidiMessage(daisy::MidiEvent m)
             break;
           case SynthControl::vcf_cutoff:
             {
-              vcf_freq = 100 + 10'000 * (p.value / 128.0);
-              logger.Print("Control Received: vcf_freq -> %d\n", static_cast<int>(vcf_freq));
+              vcf_freq.SetFrom0to1(p.value / 128.0);
+              logger.Print("Control Received: vcf_freq -> %.02f\n", vcf_freq);
             }
             break;
           case SynthControl::vcf_resonance:
