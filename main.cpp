@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "note.h"
+#include "arp.h"
 
 static daisy::Logger<daisy::LOGGER_INTERNAL> logger;
 
@@ -80,21 +81,18 @@ class Player {
   PlayerMode mode{PlayerMode::keyboard};
 
   // ARP stuff
-  daisysp::Metro tick{};
-  bool arp_next{false};
+  Arp arp;
 
   public:
 
-  Player(float samplerate) {
+  Player(float samplerate) :
+  arp(samplerate)
+  {
     for(auto& note : notes)
       note.init(samplerate);
-    tick.Init(1.0, samplerate);
-    set_arp_length(0.05125);
+    arp.set_note_len(0.05125);
   }
 
-  void set_arp_length(float secs) {
-    tick.SetFreq(1.0 / secs);
-  }
 
   void update() {
     switch(static_cast<int>(mode)) {
@@ -102,30 +100,9 @@ class Player {
         keyboard_update();
         break;
       case static_cast<int>(PlayerMode::arp):
-        arp_update();
+        arp.update();
         break;
     }
-  }
-
-  void arp_update() {
-    static int arp_select{0};
-    if(!arp_next) return;
-    arp_next = false;
-    // turn all the notes off
-    if(keys.size() <= 0) {
-      for(auto& note : notes)
-        note.note_off();
-      return;
-    }
-
-    arp_select = (arp_select + 1) % keys.size();
-
-    //logger.Print("Player.arp_update selected: %i\n", arp_select);
-
-    for(size_t i = 1; i < keys.size(); i++)
-      notes[i].note_off();
-    notes[0].note_on(keys[arp_select]);
-    notes[0].retrigger();
   }
 
   void keyboard_update() {
@@ -176,8 +153,8 @@ class Player {
         note_total += note.process();
       out[i] = out[i + 1] = note_total / poly;
     }
-    if(!arp_next)
-      arp_next = tick.Process();
+    if(mode == PlayerMode::arp)
+      arp.Process();
   }
 
   // KEYS and MIDI
