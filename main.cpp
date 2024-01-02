@@ -29,6 +29,7 @@ enum class SynthControl {
   envelope_r_vcf,
   mode_toggle,
   arp_note_length,
+  arp_mode,
   Count
 };
 
@@ -58,8 +59,9 @@ class Player {
       {91, SynthControl::envelope_d_vcf}, // Knob 14
       {79, SynthControl::envelope_s_vcf}, // Knob 15
       {72, SynthControl::envelope_r_vcf}, // Knob 16
-      {113, SynthControl::mode_toggle}, // Knob 16
+      {113, SynthControl::mode_toggle}, // Knob 1 press
       {16, SynthControl::arp_note_length}, // Knob 12
+      {115, SynthControl::arp_mode}, // Knob 9 press
   };
 
 
@@ -83,12 +85,12 @@ class Player {
   PlayerMode mode{PlayerMode::keyboard};
 
   // ARP stuff
-  Arp arp;
+  Arp<poly> arp;
 
   public:
 
   Player(float samplerate) :
-  arp(samplerate)
+  arp(samplerate, logger)
   {
     for(auto& note : notes)
       note.init(samplerate);
@@ -102,7 +104,7 @@ class Player {
         keyboard_update();
         break;
       case static_cast<int>(PlayerMode::arp):
-        arp.update<poly>(keys, notes);
+        arp.update(keys, notes);
         break;
     }
   }
@@ -314,6 +316,8 @@ class Player {
               break;
             case static_cast<int>(SynthControl::mode_toggle):
               {
+                // Buttons always get a press and a release event
+                // only respond to the press
                 if(p.value != 127)
                   break;
 
@@ -328,8 +332,18 @@ class Player {
               break;
             case static_cast<int>(SynthControl::arp_note_length):
               {
-                arp.set_note_len(0.5 * p.value / 127.f);
+                arp.set_note_len(0.002 + 0.25 * p.value / 127.f);
                 logger.Print("Control Received: Arp note length\n");
+              }
+              break;
+            case static_cast<int>(SynthControl::arp_mode):
+              {
+                // Buttons always get a press and a release event
+                // only respond to the press
+                if(p.value != 127)
+                  break;
+                arp.next_mode();
+                logger.Print("Control Received: Arp next mode\n");
               }
               break;
             default: 
