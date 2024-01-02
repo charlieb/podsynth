@@ -28,6 +28,7 @@ enum class SynthControl {
   envelope_s_vcf,
   envelope_r_vcf,
   mode_toggle,
+  arp_note_length,
   Count
 };
 
@@ -48,7 +49,7 @@ class Player {
       {71, SynthControl::vcf_cutoff}, // Knob 3
       {19, SynthControl::vcf_resonance}, // Knob 11
       {76, SynthControl::vcf_envelope_depth}, // Knob 4
-      {16, SynthControl::vca_bias}, // Knob 12
+      //{16, SynthControl::vca_bias}, // Knob 12
       {77, SynthControl::envelope_a_vca}, // Knob 5
       {93, SynthControl::envelope_d_vca}, // Knob 6
       {73, SynthControl::envelope_s_vca}, // Knob 7
@@ -58,6 +59,7 @@ class Player {
       {79, SynthControl::envelope_s_vcf}, // Knob 15
       {72, SynthControl::envelope_r_vcf}, // Knob 16
       {113, SynthControl::mode_toggle}, // Knob 16
+      {16, SynthControl::arp_note_length}, // Knob 12
   };
 
 
@@ -100,7 +102,7 @@ class Player {
         keyboard_update();
         break;
       case static_cast<int>(PlayerMode::arp):
-        arp.update();
+        arp.update<poly>(keys, notes);
         break;
     }
   }
@@ -154,7 +156,7 @@ class Player {
       out[i] = out[i + 1] = note_total / poly;
     }
     if(mode == PlayerMode::arp)
-      arp.Process();
+      arp.process();
   }
 
   // KEYS and MIDI
@@ -322,6 +324,12 @@ class Player {
 
                 logger.Print("Control Received: Mode Toggle %s\n",
                     mode == PlayerMode::keyboard ? "keyboard" : "arp");
+              }
+              break;
+            case static_cast<int>(SynthControl::arp_note_length):
+              {
+                arp.set_note_len(0.5 * p.value / 127.f);
+                logger.Print("Control Received: Arp note length\n");
               }
               break;
             default: 

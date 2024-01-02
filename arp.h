@@ -3,7 +3,7 @@
 #include "daisy_pod.h"
 #include "daisysp.h"
 
-#include "notes.h"
+#include "note.h"
 
 class Arp {
   daisysp::Metro tick{};
@@ -42,7 +42,7 @@ class Arp {
     notes[0].retrigger();
   }
 
-  float process() {
+  void process() {
     if(!next)
       next = tick.Process();
   }
