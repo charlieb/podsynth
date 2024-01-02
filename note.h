@@ -55,6 +55,11 @@ class Note {
       gate = false;
     }
 
+    void retrigger() {
+      adsr_vcf.Retrigger(false);
+      adsr_vca.Retrigger(false);
+    }
+
     float process() {
       float vcf_env = adsr_vcf.Process(gate);
       flt.SetFreq(vcf_freq + vcf_env * vcf_env_depth);
