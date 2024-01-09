@@ -403,7 +403,7 @@ int main(void)
   LCD lcd{};
   lcd.init();
   lcd.print("Hello World");
-  daisy::DaisySeed::Print("lcd started");
+  daisy::DaisySeed::Print("lcd started\n");
 
   pod.midi.StartReceive();
   for(;;)

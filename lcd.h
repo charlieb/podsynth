@@ -141,13 +141,13 @@ void init() {
 	// SEE PAGE 45/46 FOR INITIALIZATION SPECIFICATION!
 	// according to datasheet, we need at least 40ms after power rises above 2.7V
 	// before sending commands. Arduino can turn on way befer 4.5V so we'll wait 50
-  daisy::DaisySeed::Print("LCD::init");
+  daisy::DaisySeed::Print("LCD::init\n");
 	daisy::System::Delay(50); 
   
 	// Now we pull both RS and R/W low to begin commands
-  daisy::DaisySeed::Print("Backlight OFF");
+  daisy::DaisySeed::Print("Backlight OFF\n");
 	backlight_off();	// reset expanderand turn backlight off (Bit 8 =1)
-  daisy::DaisySeed::Print("Backlight OFF - done");
+  daisy::DaisySeed::Print("Backlight OFF - done\n");
 	daisy::System::Delay(1000);
 
   	//put the LCD into 4 bit mode
