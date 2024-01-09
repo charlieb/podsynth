@@ -20,7 +20,6 @@ template <int P>
 class Arp {
   static_assert(P > 0, "Arp: Polyphony of zero is no polyphony");
 
-  daisy::Logger<daisy::LOGGER_INTERNAL>& logger;
   daisysp::Metro tick{};
   bool next{false};
   uint8_t arp_select{0};
@@ -29,8 +28,7 @@ class Arp {
   std::mt19937 rng;
 
   public:
-  Arp(float samplerate, daisy::Logger<daisy::LOGGER_INTERNAL>& logger) :
-  logger(logger),
+  Arp(float samplerate) :
   rng(0) {
     tick.Init(1.0, samplerate);
   }
@@ -84,7 +82,7 @@ class Arp {
       arp_select = 0;
     }
     
-    logger.Print("Arp.update mode %i, note %i: %i\n", mode, arp_select, keys[arp_select].note);
+    daisy::DaisySeed::Print("Arp.update mode %i, note %i: %i\n", mode, arp_select, keys[arp_select].note);
 
     for(size_t i = 1; i < P; i++)
       notes[i].note_off();

@@ -16,15 +16,12 @@ class Note {
 
     daisysp::MoogLadder flt;
     daisysp::Adsr adsr_vca, adsr_vcf;
-    daisy::Logger<daisy::LOGGER_INTERNAL>& logger;
 
-    Note(float& vcf_env_depth, daisy::MappedFloatValue& vcf_freq, float& vcf_res,
-        daisy::Logger<daisy::LOGGER_INTERNAL>& logger)
+    Note(float& vcf_env_depth, daisy::MappedFloatValue& vcf_freq, float& vcf_res)
       : vcf_env_depth(vcf_env_depth)
         , vcf_freq(vcf_freq)
-        , vcf_res(vcf_res)
-        , logger(logger) {
-          logger.Print("Note Init\n");
+        , vcf_res(vcf_res) {
+          daisy::DaisySeed::Print("Note Init\n");
         };
 
     void init(float samplerate) {

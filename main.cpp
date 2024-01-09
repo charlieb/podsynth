@@ -10,8 +10,7 @@
 
 #include "note.h"
 #include "arp.h"
-
-static daisy::Logger<daisy::LOGGER_INTERNAL> logger;
+#include "lcd.h"
 
 enum class SynthControl {
   wave_shape,
@@ -73,28 +72,35 @@ class Player {
   static constexpr int poly{6};
   // This initlizer kinda sucks, boo c++
   std::array<Note, poly> notes{{
-    {vcf_env_depth, vcf_freq, vcf_res, logger},
-      {vcf_env_depth, vcf_freq, vcf_res, logger},
-      {vcf_env_depth, vcf_freq, vcf_res, logger},
-      {vcf_env_depth, vcf_freq, vcf_res, logger},
-      {vcf_env_depth, vcf_freq, vcf_res, logger},
-      {vcf_env_depth, vcf_freq, vcf_res, logger}
+    {vcf_env_depth, vcf_freq, vcf_res},
+      {vcf_env_depth, vcf_freq, vcf_res},
+      {vcf_env_depth, vcf_freq, vcf_res},
+      {vcf_env_depth, vcf_freq, vcf_res},
+      {vcf_env_depth, vcf_freq, vcf_res},
+      {vcf_env_depth, vcf_freq, vcf_res}
   }};
 
   std::vector<daisy::NoteOnEvent> keys;
   PlayerMode mode{PlayerMode::keyboard};
+  daisy::Color red;
+  daisy::Color green;
+  daisy::Color blue;
 
-  // ARP stuff
   Arp<poly> arp;
+  daisy::DaisyPod& pod;
 
   public:
 
-  Player(float samplerate) :
-  arp(samplerate, logger)
+  Player(float samplerate, daisy::DaisyPod& pod) :
+  arp(samplerate),
+  pod(pod)
   {
     for(auto& note : notes)
       note.init(samplerate);
     arp.set_note_len(0.05125);
+    red.Init(1, 0, 0);
+    green.Init(0, 1, 0);
+    blue.Init(0, 1, 0);
   }
 
 
@@ -107,6 +113,16 @@ class Player {
         arp.update(keys, notes);
         break;
     }
+
+    switch(static_cast<int>(mode)) {
+      case static_cast<int>(PlayerMode::keyboard):
+        pod.led1.SetColor(green);
+        break;
+      case static_cast<int>(PlayerMode::arp):
+        pod.led1.SetColor(blue);
+        break;
+    }
+    pod.UpdateLeds();
   }
 
   void keyboard_update() {
@@ -131,7 +147,7 @@ class Player {
       }
       if(claimed) continue;
 
-      logger.Print("Player.update Failed to add note: %i\n", key.note);
+      daisy::DaisySeed::Print("Player.update Failed to add note: %i\n", key.note);
     }
     // Now turn off the ones that aren't pressed
     for(auto& note : notes) {
@@ -157,6 +173,7 @@ class Player {
         note_total += note.process();
       out[i] = out[i + 1] = note_total / poly;
     }
+
     if(mode == PlayerMode::arp)
       arp.process();
   }
@@ -208,27 +225,27 @@ class Player {
     switch(m.type) {
       case daisy::NoteOn:
         {
-          logger.Print("Note On:\t%d\t%d\t%d\n", m.channel, m.data[0], m.data[1]);
+          daisy::DaisySeed::Print("Note On:\t%d\t%d\t%d\n", m.channel, m.data[0], m.data[1]);
           key_pressed(m.AsNoteOn());
         }
         break;
       case daisy::NoteOff: 
         {
-          logger.Print("Note Off:\t%d\t%d\t%d\n", m.channel, m.data[0], m.data[1]);
+          daisy::DaisySeed::Print("Note Off:\t%d\t%d\t%d\n", m.channel, m.data[0], m.data[1]);
           key_released(m.AsNoteOn());
         }
         break;
       case daisy::ControlChange: 
         {
           daisy::ControlChangeEvent p = m.AsControlChange();
-          logger.Print("Control Received:\t%d\t%d -> %i / %i\n", p.control_number, p.value, midi_map[p.control_number], SynthControl::wave_shape);
+          daisy::DaisySeed::Print("Control Received:\t%d\t%d -> %i / %i\n", p.control_number, p.value, midi_map[p.control_number], SynthControl::wave_shape);
           switch(static_cast<int>(midi_map[p.control_number])) {
             case static_cast<int>(SynthControl::wave_shape):
               {
                 char tmp[25]{0,};
                 uint8_t wave_num = static_cast<uint8_t>(8 * p.value / 127);
                 wave_name(tmp, wave_num);
-                logger.Print("Control Received: Waveform %i: %s\n",wave_num, tmp);
+                daisy::DaisySeed::Print("Control Received: Waveform %i: %s\n",wave_num, tmp);
                 for(auto& note : notes) {
                   note.osc.SetWaveform(static_cast<uint8_t>(p.value / 9));
                 }
@@ -237,79 +254,79 @@ class Player {
             case static_cast<int>(SynthControl::vcf_cutoff):
               {
                 vcf_freq.SetFrom0to1(p.value / 128.0);
-                logger.Print("Control Received: vcf_freq -> %.02f\n", vcf_freq);
+                daisy::DaisySeed::Print("Control Received: vcf_freq -> %.02f\n", vcf_freq);
               }
               break;
             case static_cast<int>(SynthControl::vcf_resonance):
               {
                 vcf_res = p.value / 128.0;
-                logger.Print("Control Received: vcf_res -> %f\n", vcf_res);
+                daisy::DaisySeed::Print("Control Received: vcf_res -> %f\n", vcf_res);
               }
               break;
             case static_cast<int>(SynthControl::vcf_envelope_depth):
               {
                 vcf_env_depth = 10'000 * p.value / 128.0;
-                logger.Print("Control Received: vcf_env_depth -> %i\n", static_cast<int>(vcf_env_depth));
+                daisy::DaisySeed::Print("Control Received: vcf_env_depth -> %i\n", static_cast<int>(vcf_env_depth));
               }
               break;
             case static_cast<int>(SynthControl::vca_bias):
               {
                 vca_bias = p.value / 128.0;
-                logger.Print("Control Received: vca_bias -> %f\n", vca_bias);
+                daisy::DaisySeed::Print("Control Received: vca_bias -> %f\n", vca_bias);
               }
               break;
             case static_cast<int>(SynthControl::envelope_a_vca):
               {
-                logger.Print("Control Received: VCA Attack -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
+                daisy::DaisySeed::Print("Control Received: VCA Attack -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
                 for(auto& note : notes)
                   note.adsr_vca.SetAttackTime(p.value / 128.0); // secs
               }
               break;
             case static_cast<int>(SynthControl::envelope_d_vca):
               {
-                logger.Print("Control Received: VCA Decay -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
+                daisy::DaisySeed::Print("Control Received: VCA Decay -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
                 for(auto& note : notes)
                   note.adsr_vca.SetDecayTime(p.value / 128.0); // secs
               }
               break;
             case static_cast<int>(SynthControl::envelope_s_vca):
               {
-                logger.Print("Control Received: VCA Sustain -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
+                daisy::DaisySeed::Print("Control Received: VCA Sustain -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
                 for(auto& note : notes)
                   note.adsr_vca.SetSustainLevel(p.value / 128.0);
               }
               break;
             case static_cast<int>(SynthControl::envelope_r_vca):
               {
-                logger.Print("Control Received: VCA Release -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
+                daisy::DaisySeed::Print("Control Received: VCA Release -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
                 for(auto& note : notes)
                   note.adsr_vca.SetReleaseTime(p.value / 128.0); // secs
               }
               break;
             case static_cast<int>(SynthControl::envelope_a_vcf):
               {
-                logger.Print("Control Received: VCF Attack -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
+                daisy::DaisySeed::Print("Control Received: VCF Attack -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
                 for(auto& note : notes)
                   note.adsr_vcf.SetAttackTime(p.value / 128.0); // secs
               }
               break;
             case static_cast<int>(SynthControl::envelope_d_vcf):
               {
-                logger.Print("Control Received: VCF Decay -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
+                daisy::DaisySeed::Print("Control Received: VCF Decay -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
                 for(auto& note : notes)
                   note.adsr_vcf.SetDecayTime(p.value / 128.0); // secs
               }
               break;
             case static_cast<int>(SynthControl::envelope_s_vcf):
               {
-                logger.Print("Control Received: VCF Sustain -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
+                daisy::DaisySeed::Print("Control Received: VCF Sustain -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
                 for(auto& note : notes)
                   note.adsr_vcf.SetSustainLevel(p.value / 128.0);
               }
               break;
             case static_cast<int>(SynthControl::envelope_r_vcf):
               {
-                logger.Print("Control Received: VCF Release -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
+                daisy::DaisySeed::Print("Control Received: VCF Release -> 0.%03i\n", static_cast<int>(1000 * p.value / 128.0));
                 for(auto& note : notes)
                   note.adsr_vcf.SetReleaseTime(p.value / 128.0); // secs
               }
@@ -326,14 +343,15 @@ class Player {
                 else if(mode == PlayerMode::arp)
                   mode = PlayerMode::keyboard;
 
-                logger.Print("Control Received: Mode Toggle %s\n",
+                daisy::DaisySeed::Print("Control Received: Mode Toggle %s\n",
                     mode == PlayerMode::keyboard ? "keyboard" : "arp");
+
               }
               break;
             case static_cast<int>(SynthControl::arp_note_length):
               {
                 arp.set_note_len(0.002 + 0.25 * p.value / 127.f);
-                logger.Print("Control Received: Arp note length\n");
+                daisy::DaisySeed::Print("Control Received: Arp note length\n");
               }
               break;
             case static_cast<int>(SynthControl::arp_mode):
@@ -343,12 +361,12 @@ class Player {
                 if(p.value != 127)
                   break;
                 arp.next_mode();
-                logger.Print("Control Received: Arp next mode\n");
+                daisy::DaisySeed::Print("Control Received: Arp next mode\n");
               }
               break;
             default: 
               {
-                logger.Print("Control Received: Not Mapped -> %f\n", p.control_number);
+                daisy::DaisySeed::Print("Control Received: Not Mapped -> %f\n", p.control_number);
               }
               break;
           }
@@ -363,25 +381,29 @@ class Player {
 // Main -- Init, and Midi Handling
 int main(void)
 {
-
-  static daisy::DaisyPod pod;
+  daisy::DaisyPod pod;
   // Init
   float samplerate;
   pod.Init();
   pod.SetAudioBlockSize(4);
   pod.seed.usb_handle.Init(daisy::UsbHandle::FS_INTERNAL);
   daisy::System::Delay(250);
-  logger.StartLog();
+  pod.seed.StartLog();
 
   // Synthesis
   samplerate = pod.AudioSampleRate();
-  static Player player(samplerate);
+  static Player player(samplerate, pod);
 
   // Start stuff.
   pod.StartAdc();
   pod.StartAudio([]
       (daisy::AudioHandle::InterleavingInputBuffer in, daisy::AudioHandle::InterleavingOutputBuffer out, size_t sz)
       {return player.AudioCallback(in, out, sz);});
+
+  LCD lcd{};
+  lcd.init();
+  lcd.print("Hello World");
+  daisy::DaisySeed::Print("lcd started");
 
   pod.midi.StartReceive();
   for(;;)
