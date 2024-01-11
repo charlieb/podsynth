@@ -4,7 +4,6 @@
 
 class Note {
   private:
-    // Some globals we just maintain references to
     float& vcf_env_depth;
     daisy::MappedFloatValue& vcf_freq;
     float& vcf_res;

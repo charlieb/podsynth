@@ -149,11 +149,8 @@ void init() {
 	daisy::System::Delay(50); 
   
 	// Now we pull both RS and R/W low to begin commands
-  daisy::DaisySeed::Print("LCD Backlight OFF\n");
 	backlight_off();	// reset expanderand turn backlight off (Bit 8 =1)
-  daisy::DaisySeed::Print("LCD Backlight OFF - done\n");
 	daisy::System::Delay(1000);
-  daisy::DaisySeed::Print("LCD Delay - done\n");
 
   	//put the LCD into 4 bit mode
 	// this is according to the hitachi HD44780 datasheet

@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "player.h"
-#include "note.h"
 #include "arp.h"
 #include "lcd.h"
 #include "seq.h"
@@ -95,8 +94,7 @@ class Controller {
               player.set_vcf_resonance(p.value / 127.0);
               break;
             case static_cast<int>(SynthControl::vcf_envelope_depth):
-              {
-              player.set_vcf_envelope_depth(p.value / 127.0);
+              player.set_vcf_envelope_depth(10'000 * p.value / 127.0);
               break;
             case static_cast<int>(SynthControl::vca_bias):
               player.set_vca_bias(p.value / 127.0);
@@ -154,7 +152,6 @@ class Controller {
                 if(p.value != 127)
                   break;
                 player.next_arp_mode();
-              }
               break;
             default: 
               {
