@@ -66,11 +66,14 @@ daisy::I2CHandle i2c;
   public:
 LCD() {
   static constexpr daisy::I2CHandle::Config i2c_config
-    = {daisy::I2CHandle::Config::Peripheral::I2C_1,
-       {{DSY_GPIOB, 12}, {DSY_GPIOB, 13}},		// I have failed to place GetPin() successfully in these locations
-       daisy::I2CHandle::Config::Speed::I2C_100KHZ,
-    daisy::I2CHandle::Config::Mode::I2C_MASTER,
-    addr};	// PB8 and PB9 are pins that come out as D11 and D12 on Daisy for I2C_1
+    = {
+      .periph = daisy::I2CHandle::Config::Peripheral::I2C_1,
+      .pin_config = {
+        .scl = {DSY_GPIOB, 8},
+        .sda = {DSY_GPIOB, 9}},
+      .speed = daisy::I2CHandle::Config::Speed::I2C_100KHZ,
+      .mode = daisy::I2CHandle::Config::Mode::I2C_MASTER,
+    };
 
     i2c.Init(i2c_config);
 }
@@ -79,17 +82,18 @@ LCD() {
 
 void pulseEnable(uint8_t data){
   uint8_t byte{static_cast<uint8_t>(data | En)};
-	i2c.TransmitBlocking(0x27, &byte, 1, timeout);
+	i2c.TransmitBlocking(addr, &byte, 1, timeout);
   daisy::System::DelayUs(1);		// enable pulse must be >450ns
 	
 	byte = data & ~En;
-	i2c.TransmitBlocking(0x27, &byte, 1, timeout);
+	i2c.TransmitBlocking(addr, &byte, 1, timeout);
 	daisy::System::DelayUs(50);		// commands need > 37us to settle
 } 
 
 void send_nibble(uint8_t nib) {
-  i2c.TransmitBlocking(0x27, &nib, 1, timeout);
-  pulseEnable(nib);
+  uint8_t bl_nib{static_cast<uint8_t>(nib | backlight)};
+  i2c.TransmitBlocking(addr, &bl_nib, 1, timeout);
+  pulseEnable(bl_nib);
 }
 
 void send(uint8_t b, uint8_t mode) {
@@ -107,13 +111,13 @@ void command(uint8_t b) {
 void backlight_off(void) {
 	backlight = LCD_NOBACKLIGHT;
   constexpr uint32_t timeout{500};
-	i2c.TransmitBlocking(0x27, &backlight, 1, timeout);
+	i2c.TransmitBlocking(addr, &backlight, 1, timeout);
 }
 
 void backlight_on(void) {
 	backlight = LCD_BACKLIGHT;
   constexpr uint32_t timeout{500};
-	i2c.TransmitBlocking(0x27, &backlight, 1, timeout);
+	i2c.TransmitBlocking(addr, &backlight, 1, timeout);
 }
 // Based on the work by DFRobot
 
@@ -145,10 +149,11 @@ void init() {
 	daisy::System::Delay(50); 
   
 	// Now we pull both RS and R/W low to begin commands
-  daisy::DaisySeed::Print("Backlight OFF\n");
+  daisy::DaisySeed::Print("LCD Backlight OFF\n");
 	backlight_off();	// reset expanderand turn backlight off (Bit 8 =1)
-  daisy::DaisySeed::Print("Backlight OFF - done\n");
+  daisy::DaisySeed::Print("LCD Backlight OFF - done\n");
 	daisy::System::Delay(1000);
+  daisy::DaisySeed::Print("LCD Delay - done\n");
 
   	//put the LCD into 4 bit mode
 	// this is according to the hitachi HD44780 datasheet
@@ -188,6 +193,8 @@ void init() {
 	command(LCD_ENTRYMODESET | lcd_display_entry_mode);
 	
 	home();
+
+  backlight_on();
   
 }
 
@@ -330,7 +337,7 @@ void blink_off(){
 //        // Ask for 31 bytes.
 //        uint8_t number = 32;
 //        pod.PrintLine("%05ld Asking for %d bytes on address %0x.", counter, number, address);
-//        daisy::I2CHandle::Result i2cResult = _i2c.TransmitBlocking(0x27, &number, 1, 500);
+//        daisy::I2CHandle::Result i2cResult = _i2c.TransmitBlocking(addr, &number, 1, 500);
 //        if (i2cResult == daisy::I2CHandle::Result::OK) {
 //            pod.PrintLine("%05ld Successfully transmitted requested number of bytes: %0x.", counter, number);
 //
