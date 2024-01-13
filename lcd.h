@@ -53,10 +53,13 @@
 #define Rs 0b00000001  // Register select bit
 
 class LCD {
+public:
 static constexpr uint32_t timeout{500};
 static constexpr uint8_t addr{0x27};
 static constexpr uint8_t cols{16};
 static constexpr uint8_t rows{2};
+
+private:
 uint8_t lcd_function{0};
 uint8_t lcd_display_ctrl{0};
 uint8_t lcd_display_entry_mode{0};

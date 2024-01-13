@@ -69,13 +69,15 @@ void wave_name(char *out, int val) {
 
 
 class Player {
+  public:
+  static constexpr int poly{6};
 
+  private:
   float vcf_env_depth = 0.;
   float vca_bias = 0.;
   daisy::MappedFloatValue vcf_freq{100, 20'000, 440, daisy::MappedFloatValue::Mapping::log, "Hz"};
   float vcf_res = 0;
 
-  static constexpr int poly{6};
   // This initlizer kinda sucks, boo c++
   std::array<Note, poly> notes{{
     {vcf_env_depth, vcf_freq, vcf_res},
@@ -90,21 +92,21 @@ class Player {
   PlayerMode mode{PlayerMode::keyboard};
 
   Arp<poly> arp;
-  Seq seq;
-  LCD& lcd;
-  daisy::DaisyPod& pod;
+  Seq<poly>& seq;
 
   public:
 
-  Player(float samplerate, daisy::DaisyPod& pod, LCD& lcd) :
+  Player(float samplerate, Seq<poly>& seq) :
     arp(samplerate),
-    lcd(lcd),
-    pod(pod)
+    seq(seq)
   {
     for(auto& note : notes)
       note.init(samplerate);
     arp.set_note_len(0.05125);
   }
+
+
+  std::vector<daisy::NoteOnEvent>& get_keys() {return keys;}
 
   void update() {
     switch(static_cast<int>(mode)) {
@@ -113,6 +115,16 @@ class Player {
         break;
       case static_cast<int>(PlayerMode::arp):
         arp.update(keys, notes);
+        break;
+      case static_cast<int>(PlayerMode::seq):
+        seq.update(keys, notes); // Sets the keys for the step
+
+       // Then we have to play them according to the step's playmode
+        Step& s{seq.step()};
+        if(s.mode == StepMode::chord)
+          keyboard_update();
+        else if(s.mode == StepMode::arp)
+          arp.update(keys, notes);
         break;
     }
   }
@@ -179,8 +191,8 @@ class Player {
       out[i] = out[i + 1] = note_total / poly;
     }
 
-    if(mode == PlayerMode::arp)
-      arp.process();
+    arp.process();
+    seq.process();
   }
 
   // KEYS and other controlled events

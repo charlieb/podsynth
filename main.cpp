@@ -61,12 +61,87 @@ class Controller {
   daisy::Color blue;
   Player& player;
   LCD& lcd;
+  Seq<Player::poly>& seq;
+  daisy::DaisyPod& pod;
+
+  // This is the current step for editing only, not for playing
+  uint8_t lcd_seq_step{0};
 
   public:
-  Controller(Player& player, LCD& lcd) : player(player), lcd(lcd) {
+  Controller(Player& player, Seq<Player::poly>& seq, LCD& lcd, daisy::DaisyPod& pod)
+    : player(player)
+    , lcd(lcd)
+    , seq(seq)
+     ,pod(pod)  {
     red.Init(1, 0, 0);
     green.Init(0, 1, 0);
     blue.Init(0, 1, 0);
+  }
+
+  char step_letter(Step& step) {
+    if(step.active) 
+      return step.mode == StepMode::chord ? 'C' : 'A';
+    else
+      return '_';
+  }
+
+  void redraw() {
+    char top_letters[Seq<Player::poly>::nsteps + 1]{0,};
+    char bot_letters[Seq<Player::poly>::nsteps + 1]{0,};
+
+    // A for Arp, C for Chord (or C(k)eys)
+    for(int i = 0; i < Seq<Player::poly>::nsteps / 2; i++)
+      top_letters[i] = step_letter(seq.step(i));
+    for(int i = Seq<Player::poly>::nsteps / 2; i < Seq<Player::poly>::nsteps; i++)
+      bot_letters[i - Seq<Player::poly>::nsteps / 2] = step_letter(seq.step(i));
+   
+    
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print(top_letters);
+    lcd.setCursor(0,1);
+    lcd.print(bot_letters);
+
+    lcd.setCursor(lcd_seq_step % LCD::cols, lcd_seq_step >= LCD::cols ? 1 : 0);
+    lcd.cursor_on();
+    lcd.blink_on();
+  }
+
+  // Returns whether to redraw or not
+  bool HandlePodControls() {
+    pod.ProcessDigitalControls();
+    bool redraw{false};
+    // Encoder turns select the current step
+    int32_t inc = pod.encoder.Increment();
+    if(inc) {
+      lcd_seq_step += inc;
+      lcd_seq_step = lcd_seq_step % Seq<Player::poly>::nsteps;
+      redraw = true;
+      daisy::DaisySeed::Print("Pod Encoder Increment -> %u\n", lcd_seq_step);
+    }
+    // Encoder Button Release captures the keys as the keys for this step
+    if(pod.encoder.FallingEdge()) {
+      daisy::DaisySeed::Print("Pod Encoder Click\n");
+      seq.step(lcd_seq_step).notes.clear();
+      auto keys{player.get_keys()};
+      for(auto k : keys)
+        seq.step(lcd_seq_step).notes.push_back(k);
+      redraw = true;
+    }
+    // Button 1 switches between arp and chord mode for that step
+    if(pod.button1.RisingEdge()) {
+      daisy::DaisySeed::Print("Pod Button1 Click\n");
+      seq.step(lcd_seq_step).mode = seq.step(lcd_seq_step).mode == StepMode::chord ? StepMode::arp : StepMode::chord;
+      redraw = true;
+    }
+    // Button 2 switches step off and on
+    if(pod.button2.RisingEdge()) {
+      daisy::DaisySeed::Print("Pod Button2 Click\n");
+      seq.step(lcd_seq_step).active = !seq.step(lcd_seq_step).active;
+      redraw = true;
+    }
+    
+    return redraw;
   }
 
   // Typical Switch case for Message Type.
@@ -188,8 +263,10 @@ int main(void)
   daisy::DaisySeed::Print("lcd started\n");
 
   samplerate = pod.AudioSampleRate();
-  static Player player(samplerate, pod, lcd);
-  static Controller controller(player, lcd);
+  static Seq<Player::poly> seq(samplerate);
+  seq.randomize();
+  static Player player(samplerate, seq);
+  static Controller controller(player, seq, lcd, pod);
 
   // Start stuff.
   pod.StartAdc();
@@ -207,5 +284,8 @@ int main(void)
       controller.HandleMidiMessage(pod.midi.PopEvent());
     }
     player.update();
+    if(controller.HandlePodControls()) {
+      controller.redraw();
+    }
   }
 }
