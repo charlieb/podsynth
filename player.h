@@ -143,9 +143,7 @@ class Player {
     // have a note that's playing them ... but wait there's more.
     // There's also the notes for keys that have been released
     // since the last update. i.e. notes with no matching key
-    // That's loop (3). Maybe this should be the first thing
-    // we do here but eh, it all happens so fast no-one's going
-    // to notice.
+    // That's loop (3). 
     for(auto key : keys) {
       bool claimed = false;
       for(auto& note : notes) { // (1): Keep keys on
@@ -177,6 +175,15 @@ class Player {
       }
       if(!claimed) note.note_off();
     }
+
+    for(auto& note : notes)
+      daisy::DaisySeed::Print(note.gate ? "1" : "0");
+    daisy::DaisySeed::Print("\n");
+
+    for(auto& key : keys)
+      daisy::DaisySeed::Print("%u ", key.note);
+    daisy::DaisySeed::Print("\n");
+
   }
 
   // AUDIO CALLBACK

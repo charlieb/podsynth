@@ -9,7 +9,7 @@
 enum StepMode { chord, arp };
 
 struct Step {
-  std::vector<daisy::NoteOnEvent> notes;
+  std::vector<daisy::NoteOnEvent> keys;
   StepMode mode{StepMode::chord};
   bool active{false};
   bool gate{true};
@@ -53,16 +53,19 @@ class Seq {
     next_step();
 
     // turn all the notes off
-    for(auto& note : notes)
+    for(auto& note : notes) {
       note.note_off();
+    }
 
     daisy::DaisySeed::Print("Seq update: step %u\n", current_step);
 
     keys.clear();
-    for(auto& note : steps[current_step].notes)
-      keys.push_back(note);
+    for(auto& key : steps[current_step].keys) {
+      keys.push_back(key);
+      daisy::DaisySeed::Print("Seq::update - note %u\n", key.note);
+    }
 
-    daisy::DaisySeed::Print("Seq::update - set %u / %u notes\n", keys.size(), steps[current_step].notes.size());
+    daisy::DaisySeed::Print("Seq::update - set %u / %u notes\n", keys.size(), steps[current_step].keys.size());
 
   }
 
@@ -74,9 +77,12 @@ class Seq {
   void randomize() {
     for(auto& step : steps) {
       step.active = true;
-      step.notes.clear();
+      step.keys.clear();
       //daisy::NoteOnEvent
-      step.notes.push_back({.channel = 0, .note = 60, .velocity=127});
+      step.keys.push_back({.channel = 0, .note = 60, .velocity=127});
+      step.keys.push_back({.channel = 0, .note = 62, .velocity=127});
+      step.keys.push_back({.channel = 0, .note = 64, .velocity=127});
+      step.mode = StepMode::arp;
     }
   }
 };

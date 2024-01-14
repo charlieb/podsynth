@@ -122,10 +122,10 @@ class Controller {
     // Encoder Button Release captures the keys as the keys for this step
     if(pod.encoder.FallingEdge()) {
       daisy::DaisySeed::Print("Pod Encoder Click\n");
-      seq.step(lcd_seq_step).notes.clear();
+      seq.step(lcd_seq_step).keys.clear();
       auto keys{player.get_keys()};
       for(auto k : keys)
-        seq.step(lcd_seq_step).notes.push_back(k);
+        seq.step(lcd_seq_step).keys.push_back(k);
       redraw = true;
     }
     // Button 1 switches between arp and chord mode for that step
