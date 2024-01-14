@@ -75,18 +75,11 @@ class Player {
   private:
   float vcf_env_depth = 0.;
   float vca_bias = 0.;
-  daisy::MappedFloatValue vcf_freq{100, 20'000, 440, daisy::MappedFloatValue::Mapping::log, "Hz"};
+  float vcf_freq = 0;
   float vcf_res = 0;
 
   // This initlizer kinda sucks, boo c++
-  std::array<Note, poly> notes{{
-    {vcf_env_depth, vcf_freq, vcf_res},
-      {vcf_env_depth, vcf_freq, vcf_res},
-      {vcf_env_depth, vcf_freq, vcf_res},
-      {vcf_env_depth, vcf_freq, vcf_res},
-      {vcf_env_depth, vcf_freq, vcf_res},
-      {vcf_env_depth, vcf_freq, vcf_res}
-  }};
+  std::array<Note, poly> notes{{{0},{0},{0},{0},{0},{0}}};
 
   std::vector<daisy::NoteOnEvent> keys;
   PlayerMode mode{PlayerMode::keyboard};
@@ -100,8 +93,10 @@ class Player {
     arp(samplerate),
     seq(seq)
   {
-    for(auto& note : notes)
-      note.init(samplerate);
+    for(auto& note : notes) {
+      Note n{samplerate};
+      note = n;
+    }
     arp.set_note_len(0.05125);
   }
 
@@ -176,6 +171,7 @@ class Player {
       if(!claimed) note.note_off();
     }
 
+    /*
     for(auto& note : notes)
       daisy::DaisySeed::Print(note.gate ? "1" : "0");
     daisy::DaisySeed::Print("\n");
@@ -183,7 +179,7 @@ class Player {
     for(auto& key : keys)
       daisy::DaisySeed::Print("%u ", key.note);
     daisy::DaisySeed::Print("\n");
-
+*/
   }
 
   // AUDIO CALLBACK
@@ -194,7 +190,7 @@ class Player {
     float note_total{0};
     for(size_t i = 0; i < size; i += 2) {
       for(auto& note : notes)
-        note_total += note.process();
+        note_total += note.process(vcf_freq, vcf_res, vcf_env_depth);
       out[i] = out[i + 1] = note_total / poly;
     }
 
@@ -220,64 +216,64 @@ class Player {
     wave_name(tmp, wave_num);
     daisy::DaisySeed::Print("Control Received: Waveform %i: %s\n",wave_num, tmp);
     for(auto& note : notes) {
-      note.osc.SetWaveform(wave_num);
+      note.set_wave_shape(wave_num);
     }
   }
   void set_vcf_cutoff(float cutoff_knob) {
-    vcf_freq.SetFrom0to1(cutoff_knob);
-    daisy::DaisySeed::Print("Control Received: vcf_freq -> %.02f\n", vcf_freq);
+    daisy::DaisySeed::Print("Control Received: vcf_freq -> 0.%i\n", static_cast<int>(1000*cutoff_knob));
+    vcf_freq = cutoff_knob;
   }
   void set_vcf_resonance(float res) {
+    daisy::DaisySeed::Print("Control Received: vcf_res -> 0.%i\n", static_cast<int>(1000*res));
     vcf_res = res;
-    daisy::DaisySeed::Print("Control Received: vcf_res -> %f\n", vcf_res);
   }
   void set_vcf_envelope_depth(float depth) {
+    daisy::DaisySeed::Print("Control Received: vcf_env_depth -> 0.%i\n", static_cast<int>(1000*depth));
     vcf_env_depth = depth;
-    daisy::DaisySeed::Print("Control Received: vcf_env_depth -> %f\n", vcf_env_depth);
   }
   void set_vca_bias(float bias) {
-    vca_bias = bias;
     daisy::DaisySeed::Print("Control Received: vca_bias -> %f\n", vca_bias);
+    vca_bias = bias;
   }
-  void set_envelope_a_vca(float attack) {
-    daisy::DaisySeed::Print("Control Received: VCA Attack -> 0.%03i\n", static_cast<int>(1000 * attack));
+  void set_envelope_a_vca(float val) {
+    daisy::DaisySeed::Print("Control Received: VCA Attack -> 0.%03i\n", static_cast<int>(1000 * val));
     for(auto& note : notes)
-      note.adsr_vca.SetAttackTime(attack); // secs
+      note.set_vca_attack(val); // secs
   }
   void set_envelope_d_vca(float val) {
     daisy::DaisySeed::Print("Control Received: VCA Decay -> 0.%03i\n", static_cast<int>(1000 * val));
     for(auto& note : notes)
-      note.adsr_vca.SetDecayTime(val); // secs
+      note.set_vca_decay(val); // secs
   }
   void set_envelope_s_vca(float val) {
     daisy::DaisySeed::Print("Control Received: VCA Sustain -> 0.%03i\n", static_cast<int>(1000 * val));
-    for(auto& note : notes)
-      note.adsr_vca.SetSustainLevel(val);
+    //for(auto& note : notes)
+    //  note.adsr_vca.SetSustainLevel(val);
   }
   void set_envelope_r_vca(float val) {
     daisy::DaisySeed::Print("Control Received: VCA Release -> 0.%03i\n", static_cast<int>(1000 * val));
-    for(auto& note : notes)
-      note.adsr_vca.SetReleaseTime(val); // secs
+    //for(auto& note : notes)
+    //  note.adsr_vca.SetReleaseTime(val); // secs
   }
   void set_envelope_a_vcf(float val) {
     daisy::DaisySeed::Print("Control Received: VCF Attack -> 0.%03i\n", static_cast<int>(1000 * val));
     for(auto& note : notes)
-      note.adsr_vcf.SetAttackTime(val); // secs
+      note.set_vcf_attack(val); // secs
   }
   void set_envelope_d_vcf(float val) {
     daisy::DaisySeed::Print("Control Received: VCF Decay -> 0.%03i\n", static_cast<int>(1000 * val));
     for(auto& note : notes)
-      note.adsr_vcf.SetDecayTime(val); // secs
+      note.set_vcf_decay(val); // secs
   }
   void set_envelope_s_vcf(float val) {
     daisy::DaisySeed::Print("Control Received: VCF Sustain -> 0.%03i\n", static_cast<int>(1000 * val));
-    for(auto& note : notes)
-      note.adsr_vcf.SetSustainLevel(val);
+    //for(auto& note : notes)
+    //  note.adsr_vcf.SetSustainLevel(val);
   }
   void set_envelope_r_vcf(float val) {
     daisy::DaisySeed::Print("Control Received: VCF Release -> 0.%03i\n", static_cast<int>(1000 * val));
-    for(auto& note : notes)
-      note.adsr_vcf.SetReleaseTime(val); // secs
+    //for(auto& note : notes)
+    //  note.adsr_vcf.SetReleaseTime(val); // secs
   }
   void set_mode(PlayerMode new_mode) {
     mode = new_mode;

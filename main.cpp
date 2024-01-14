@@ -166,10 +166,10 @@ class Controller {
               player.set_vcf_cutoff(p.value / 127.0);
               break;
             case static_cast<int>(SynthControl::vcf_resonance):
-              player.set_vcf_resonance(p.value / 127.0);
+              player.set_vcf_resonance((1.0 + p.value) / 129.0);
               break;
             case static_cast<int>(SynthControl::vcf_envelope_depth):
-              player.set_vcf_envelope_depth(10'000 * p.value / 127.0);
+              player.set_vcf_envelope_depth(p.value / 127.0);
               break;
             case static_cast<int>(SynthControl::vca_bias):
               player.set_vca_bias(p.value / 127.0);
