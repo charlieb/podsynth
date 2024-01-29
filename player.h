@@ -8,33 +8,12 @@
 #include <cstdarg>
 #include <array>
 #include <vector>
-
 #include "note.h"
-#include "arp.h"
-#include "lcd.h"
-#include "seq.h"
 
-
-enum class PlayerMode {
-  keyboard,
-  arp,
-  seq,
-  Count
-};
+#define LogPrint(...) daisy::DaisySeed::Print(__VA_ARGS__)
+//#define LogPrint(...) 
 
 // Printing Functions
-
-void playermode_name(char *out, PlayerMode mode) {
-  if(mode == PlayerMode::keyboard) {
-    strncpy(out, "Key", 16);
-  }
-  else if(mode == PlayerMode::arp) {
-    strncpy(out, "Arp", 16);
-  }
-  else if(mode == PlayerMode::seq) {
-    strncpy(out, "Seq", 16);
-  }
-}
 
 void wave_name(char *out, int val) {
   switch(val) {
@@ -67,10 +46,23 @@ void wave_name(char *out, int val) {
   }
 }
 
+class KeyTracker {
+  public:
+    std::vector<daisy::NoteOnEvent> keys;
+  void press(daisy::NoteOnEvent on) {
+    LogPrint("Key Pressed: Chan: %d Note: %d Vel: %d\n", on.channel, on.note, on.velocity);
+    keys.push_back(on);
+  }
+
+  void release(daisy::NoteOnEvent off) {
+    LogPrint("Key Released: Chan: %d Note: %d\n", off.channel, off.note);
+    std::erase_if(keys, [off](daisy::NoteOnEvent k) {return k.note == off.note;});
+  }
+};
 
 class Player {
   public:
-  static constexpr int poly{6};
+  static constexpr size_t poly{6};
 
   private:
   float vcf_env_depth = 0.;
@@ -78,108 +70,36 @@ class Player {
   float vcf_freq = 0;
   float vcf_res = 0;
 
+  float last_note_total{-1.};
+
   // This initlizer kinda sucks, boo c++
   std::array<Note, poly> notes{{{0},{0},{0},{0},{0},{0}}};
 
-  std::vector<daisy::NoteOnEvent> keys;
-  PlayerMode mode{PlayerMode::keyboard};
-
-  Arp<poly> arp;
-  Seq<poly>& seq;
-
   public:
 
-  Player(float samplerate, Seq<poly>& seq) :
-    arp(samplerate),
-    seq(seq)
-  {
+  Player(float samplerate) {
     for(auto& note : notes) {
       Note n{samplerate};
       note = n;
     }
-    arp.set_note_len(0.05125);
+    //arp.set_note_len(0.05125);
   }
 
-
-  std::vector<daisy::NoteOnEvent>& get_keys() {return keys;}
-
-  void update() {
-    switch(static_cast<int>(mode)) {
-      case static_cast<int>(PlayerMode::keyboard):
-        keyboard_update();
-        break;
-      case static_cast<int>(PlayerMode::arp):
-        arp.update(keys, notes);
-        break;
-      case static_cast<int>(PlayerMode::seq):
-        seq.update(keys, notes); // Sets the keys for the step
-
-       // Then we have to play them according to the step's playmode
-        Step& s{seq.step()};
-        if(s.mode == StepMode::chord)
-          keyboard_update();
-        else if(s.mode == StepMode::arp)
-          arp.update(keys, notes);
-        break;
-    }
-  }
-
-  void keyboard_update() {
-    // This code's a bit odd-looking but the idea is
-    // go through all the currently pressed keys.
-    // Some of them have been pressed since the last update
-    // but some are still pressed from before that.
-    // So first we have to match pressed keys to already 
-    // playing notes, that's loop (1).
-    // Bonus: we also catch re-pressed notes at this stage
-    // If there's no match then maybe there's a non-playing
-    // note left that we can assign to play this key. Loop (2)
-    // Now all the pressed keys (up to the polyphony limit)
-    // have a note that's playing them ... but wait there's more.
-    // There's also the notes for keys that have been released
-    // since the last update. i.e. notes with no matching key
-    // That's loop (3). 
-    for(auto key : keys) {
-      bool claimed = false;
-      for(auto& note : notes) { // (1): Keep keys on
-        if(note.note_match(key)) {
-          note.note_on(key);
-          claimed = true;
-          break;
-        }
-      }
-      if(claimed) continue;
-      for(auto& note : notes) { // (2): Turn new keys on
-        if(!note.gate) {
-          note.note_on(key);
-          claimed = true;
-          break;
-        }
-      }
-      if(claimed) continue;
-
-      daisy::DaisySeed::Print("Player.update Failed to add note: %i\n", key.note);
-    }
-    for(auto& note : notes) { // (3): Turn released keys off
-      bool claimed = false;
-      for(auto key : keys) {
-        if(note.note_match(key)) {
-          claimed = true;
-          break;
-        }
-      }
-      if(!claimed) note.note_off();
-    }
-
-    /*
+  void play_chord(std::vector<daisy::NoteOnEvent>& keys) {
     for(auto& note : notes)
-      daisy::DaisySeed::Print(note.gate ? "1" : "0");
-    daisy::DaisySeed::Print("\n");
+      note.note_off();
 
-    for(auto& key : keys)
-      daisy::DaisySeed::Print("%u ", key.note);
-    daisy::DaisySeed::Print("\n");
-*/
+    for(size_t i = 0; i < std::min(poly, keys.size()); i++) {
+      notes[i].note_on(keys[i]);
+    }
+  }
+
+  void play_note(daisy::NoteOnEvent& key) {
+    for(auto& note : notes)
+      note.note_off();
+
+    notes[0].note_on(key);
+    //LogPrint("Player.note_on last_note_total: %i\n", static_cast<int>(last_note_total * 1000.));
   }
 
   // AUDIO CALLBACK
@@ -192,102 +112,82 @@ class Player {
       for(auto& note : notes)
         note_total += note.process(vcf_freq, vcf_res, vcf_env_depth);
       out[i] = out[i + 1] = note_total / poly;
+      last_note_total = note_total;
     }
-
-    arp.process();
-    seq.process();
   }
 
-  // KEYS and other controlled events
+  // Controller changes
   // This is the boring repetative code
-
-  void key_pressed(daisy::NoteOnEvent on) {
-    daisy::DaisySeed::Print("Key Pressed: Chan: %d Note: %d Vel: %d\n", on.channel, on.note, on.velocity);
-    keys.push_back(on);
-  }
-
-  void key_released(daisy::NoteOnEvent off) {
-    daisy::DaisySeed::Print("Key Released: Chan: %d Note: %d\n", off.channel, off.note);
-    std::erase_if(keys, [off](daisy::NoteOnEvent k) {return k.note == off.note;});
-  }
-
   void set_wave_shape(uint8_t wave_num) {
     char tmp[25]{0,};
     wave_name(tmp, wave_num);
-    daisy::DaisySeed::Print("Control Received: Waveform %i: %s\n",wave_num, tmp);
+    LogPrint("Control Received: Waveform %i: %s\n",wave_num, tmp);
     for(auto& note : notes) {
       note.set_wave_shape(wave_num);
     }
   }
   void set_vcf_cutoff(float cutoff_knob) {
-    daisy::DaisySeed::Print("Control Received: vcf_freq -> 0.%i\n", static_cast<int>(1000*cutoff_knob));
+    LogPrint("Control Received: vcf_freq -> 0.%i\n", static_cast<int>(1000*cutoff_knob));
     vcf_freq = cutoff_knob;
   }
   void set_vcf_resonance(float res) {
-    daisy::DaisySeed::Print("Control Received: vcf_res -> 0.%i\n", static_cast<int>(1000*res));
+    LogPrint("Control Received: vcf_res -> 0.%i\n", static_cast<int>(1000*res));
     vcf_res = res;
   }
   void set_vcf_envelope_depth(float depth) {
-    daisy::DaisySeed::Print("Control Received: vcf_env_depth -> 0.%i\n", static_cast<int>(1000*depth));
+    LogPrint("Control Received: vcf_env_depth -> 0.%i\n", static_cast<int>(1000*depth));
     vcf_env_depth = depth;
   }
   void set_vca_bias(float bias) {
-    daisy::DaisySeed::Print("Control Received: vca_bias -> %f\n", vca_bias);
+    LogPrint("Control Received: vca_bias -> %f\n", vca_bias);
     vca_bias = bias;
   }
   void set_envelope_a_vca(float val) {
-    daisy::DaisySeed::Print("Control Received: VCA Attack -> 0.%03i\n", static_cast<int>(1000 * val));
+    if(val <= 0.007)
+      val = 0.007;
+    LogPrint("Control Received: VCA Attack -> 0.%03i\n", static_cast<int>(1000 * val));
     for(auto& note : notes)
       note.set_vca_attack(val); // secs
   }
   void set_envelope_d_vca(float val) {
-    daisy::DaisySeed::Print("Control Received: VCA Decay -> 0.%03i\n", static_cast<int>(1000 * val));
+    if(val <= 0.007)
+      val = 0.007;
+    LogPrint("Control Received: VCA Decay -> 0.%03i\n", static_cast<int>(1000 * val));
     for(auto& note : notes)
       note.set_vca_decay(val); // secs
   }
   void set_envelope_s_vca(float val) {
-    daisy::DaisySeed::Print("Control Received: VCA Sustain -> 0.%03i\n", static_cast<int>(1000 * val));
+    LogPrint("Control Received: VCA Sustain -> 0.%03i\n", static_cast<int>(1000 * val));
     //for(auto& note : notes)
     //  note.adsr_vca.SetSustainLevel(val);
   }
   void set_envelope_r_vca(float val) {
-    daisy::DaisySeed::Print("Control Received: VCA Release -> 0.%03i\n", static_cast<int>(1000 * val));
+    LogPrint("Control Received: VCA Release -> 0.%03i\n", static_cast<int>(1000 * val));
     //for(auto& note : notes)
     //  note.adsr_vca.SetReleaseTime(val); // secs
   }
   void set_envelope_a_vcf(float val) {
-    daisy::DaisySeed::Print("Control Received: VCF Attack -> 0.%03i\n", static_cast<int>(1000 * val));
+    if(val <= 0.007)
+      val = 0.007;
+    LogPrint("Control Received: VCF Attack -> 0.%03i\n", static_cast<int>(1000 * val));
     for(auto& note : notes)
       note.set_vcf_attack(val); // secs
   }
   void set_envelope_d_vcf(float val) {
-    daisy::DaisySeed::Print("Control Received: VCF Decay -> 0.%03i\n", static_cast<int>(1000 * val));
+    if(val <= 0.007)
+      val = 0.007;
+    LogPrint("Control Received: VCF Decay -> 0.%03i\n", static_cast<int>(1000 * val));
     for(auto& note : notes)
       note.set_vcf_decay(val); // secs
   }
   void set_envelope_s_vcf(float val) {
-    daisy::DaisySeed::Print("Control Received: VCF Sustain -> 0.%03i\n", static_cast<int>(1000 * val));
+    LogPrint("Control Received: VCF Sustain -> 0.%03i\n", static_cast<int>(1000 * val));
     //for(auto& note : notes)
     //  note.adsr_vcf.SetSustainLevel(val);
   }
   void set_envelope_r_vcf(float val) {
-    daisy::DaisySeed::Print("Control Received: VCF Release -> 0.%03i\n", static_cast<int>(1000 * val));
+    LogPrint("Control Received: VCF Release -> 0.%03i\n", static_cast<int>(1000 * val));
     //for(auto& note : notes)
     //  note.adsr_vcf.SetReleaseTime(val); // secs
-  }
-  void set_mode(PlayerMode new_mode) {
-    mode = new_mode;
-    char new_mode_name[16]{};
-    playermode_name(new_mode_name, mode);
-    daisy::DaisySeed::Print("Control Received: Mode Toggle %s\n", new_mode_name);
-  }
-  PlayerMode get_mode() {return mode;};
-  void set_arp_note_len(float len) {
-    arp.set_note_len(len);
-    daisy::DaisySeed::Print("Control Received: Arp note length\n");
-  }
-  void next_arp_mode() {
-    arp.next_mode();
-    daisy::DaisySeed::Print("Control Received: Arp next mode\n");
   }
 };

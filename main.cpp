@@ -13,25 +13,45 @@
 #include "lcd.h"
 #include "seq.h"
 
+#define LogPrint(...) daisy::DaisySeed::Print(__VA_ARGS__)
+//#define LogPrint(...) 
+
 enum class SynthControl {
   wave_shape,
   vcf_cutoff,
   vcf_resonance,
   vcf_envelope_depth,
   vca_bias,
+  oscillator_detune,
   envelope_a_vca,
   envelope_d_vca,
-  envelope_s_vca,
-  envelope_r_vca,
+  envelope_s_vca, // Not currently used
+  envelope_r_vca, // Not currently used
   envelope_a_vcf,
   envelope_d_vcf,
-  envelope_s_vcf,
-  envelope_r_vcf,
+  envelope_s_vcf, // Not currently used
+  envelope_r_vcf, // Not currently used
   mode_toggle,
   arp_note_length,
   arp_mode,
   Count
 };
+
+/* Arturia Minilab mkII
+
+ click midi, turn midi
+   o
+ knob numbering   
+       
+ 113,?  74   71   76   77   93   73   75
+   O    o    o    o    o    o    o    o
+   1    2    3    4    5    6    7    8  
+
+ 113,?  ?    19   16   17   91   79   72
+   O    o    o    o    o    o    o    o
+   9   10   11   12   13   14   15   16
+
+ */
 
 class Controller {
   // Map of daisy::ControlChangeEvent::control_number aka midi control number
@@ -39,36 +59,36 @@ class Controller {
   // If you're hooking up your own controller, this is the place
   // to map your controls.
   std::unordered_map<uint8_t, SynthControl> midi_map {
-    {74, SynthControl::wave_shape}, // Knob 2
+      {113, SynthControl::mode_toggle}, // Knob 1 press
+      {115, SynthControl::arp_mode}, // Knob 9 press
+
+      {74, SynthControl::wave_shape}, // Knob 2
+      {18, SynthControl::oscillator_detune}, // Knob 10
       {71, SynthControl::vcf_cutoff}, // Knob 3
       {19, SynthControl::vcf_resonance}, // Knob 11
       {76, SynthControl::vcf_envelope_depth}, // Knob 4
       //{16, SynthControl::vca_bias}, // Knob 12
+      {16, SynthControl::arp_note_length}, // Knob 12
+      
       {77, SynthControl::envelope_a_vca}, // Knob 5
       {93, SynthControl::envelope_d_vca}, // Knob 6
-      {73, SynthControl::envelope_s_vca}, // Knob 7
-      {75, SynthControl::envelope_r_vca}, // Knob 8
       {17, SynthControl::envelope_a_vcf}, // Knob 13
       {91, SynthControl::envelope_d_vcf}, // Knob 14
-      {79, SynthControl::envelope_s_vcf}, // Knob 15
-      {72, SynthControl::envelope_r_vcf}, // Knob 16
-      {113, SynthControl::mode_toggle}, // Knob 1 press
-      {16, SynthControl::arp_note_length}, // Knob 12
-      {115, SynthControl::arp_mode}, // Knob 9 press
   };
   daisy::Color red;
   daisy::Color green;
   daisy::Color blue;
   Player& player;
   LCD& lcd;
-  Seq<Player::poly>& seq;
+  Seq& seq;
   daisy::DaisyPod& pod;
+  KeyTracker keys;
 
   // This is the current step for editing only, not for playing
   uint8_t lcd_seq_step{0};
 
   public:
-  Controller(Player& player, Seq<Player::poly>& seq, LCD& lcd, daisy::DaisyPod& pod)
+  Controller(Player& player, Seq& seq, LCD& lcd, daisy::DaisyPod& pod)
     : player(player)
     , lcd(lcd)
     , seq(seq)
@@ -86,14 +106,14 @@ class Controller {
   }
 
   void redraw() {
-    char top_letters[Seq<Player::poly>::nsteps + 1]{0,};
-    char bot_letters[Seq<Player::poly>::nsteps + 1]{0,};
+    char top_letters[Seq::nsteps + 1]{0,};
+    char bot_letters[Seq::nsteps + 1]{0,};
 
     // A for Arp, C for Chord (or C(k)eys)
-    for(int i = 0; i < Seq<Player::poly>::nsteps / 2; i++)
+    for(int i = 0; i < Seq::nsteps / 2; i++)
       top_letters[i] = step_letter(seq.step(i));
-    for(int i = Seq<Player::poly>::nsteps / 2; i < Seq<Player::poly>::nsteps; i++)
-      bot_letters[i - Seq<Player::poly>::nsteps / 2] = step_letter(seq.step(i));
+    for(int i = Seq::nsteps / 2; i < Seq::nsteps; i++)
+      bot_letters[i - Seq::nsteps / 2] = step_letter(seq.step(i));
    
     
     lcd.clear();
@@ -115,28 +135,27 @@ class Controller {
     int32_t inc = pod.encoder.Increment();
     if(inc) {
       lcd_seq_step += inc;
-      lcd_seq_step = lcd_seq_step % Seq<Player::poly>::nsteps;
+      lcd_seq_step = lcd_seq_step % Seq::nsteps;
       redraw = true;
-      daisy::DaisySeed::Print("Pod Encoder Increment -> %u\n", lcd_seq_step);
+      LogPrint("Pod Encoder Increment -> %u\n", lcd_seq_step);
     }
     // Encoder Button Release captures the keys as the keys for this step
     if(pod.encoder.FallingEdge()) {
-      daisy::DaisySeed::Print("Pod Encoder Click\n");
-      seq.step(lcd_seq_step).keys.clear();
-      auto keys{player.get_keys()};
-      for(auto k : keys)
-        seq.step(lcd_seq_step).keys.push_back(k);
+      LogPrint("Pod Encoder Click\n");
+      seq.step(lcd_seq_step).notes.clear();
+      for(auto k : keys.keys)
+        seq.step(lcd_seq_step).notes.push_back(k);
       redraw = true;
     }
     // Button 1 switches between arp and chord mode for that step
     if(pod.button1.RisingEdge()) {
-      daisy::DaisySeed::Print("Pod Button1 Click\n");
+      LogPrint("Pod Button1 Click\n");
       seq.step(lcd_seq_step).mode = seq.step(lcd_seq_step).mode == StepMode::chord ? StepMode::arp : StepMode::chord;
       redraw = true;
     }
     // Button 2 switches step off and on
     if(pod.button2.RisingEdge()) {
-      daisy::DaisySeed::Print("Pod Button2 Click\n");
+      LogPrint("Pod Button2 Click\n");
       seq.step(lcd_seq_step).active = !seq.step(lcd_seq_step).active;
       redraw = true;
     }
@@ -144,23 +163,25 @@ class Controller {
     return redraw;
   }
 
-  // Typical Switch case for Message Type.
   void HandleMidiMessage(daisy::MidiEvent m)
   {
     switch(m.type) {
       case daisy::NoteOn:
-        player.key_pressed(m.AsNoteOn());
+        keys.press(m.AsNoteOn());
         break;
       case daisy::NoteOff: 
-        player.key_released(m.AsNoteOn());
+        keys.release(m.AsNoteOn());
         break;
       case daisy::ControlChange: 
         {
           daisy::ControlChangeEvent p = m.AsControlChange();
-          daisy::DaisySeed::Print("Control Received:\t%d\t%d -> %i / %i\n", p.control_number, p.value, midi_map[p.control_number], SynthControl::wave_shape);
+          LogPrint("Control Received:\t%d\t%d -> %i / %i\n", p.control_number, p.value, midi_map[p.control_number], SynthControl::wave_shape);
           switch(static_cast<int>(midi_map[p.control_number])) {
             case static_cast<int>(SynthControl::wave_shape): 
               player.set_wave_shape(static_cast<uint8_t>(8 * p.value / 127.0));
+              break;
+            case static_cast<int>(SynthControl::oscillator_detune): 
+              //player.set_oscillator_detune(p.value);
               break;
             case static_cast<int>(SynthControl::vcf_cutoff): 
               player.set_vcf_cutoff(p.value / 127.0);
@@ -204,33 +225,21 @@ class Controller {
               // only respond to the press
               if(p.value != 127)
                 break;
-
-              char new_mode_name[16]{};
-              if(player.get_mode() == PlayerMode::keyboard)
-                player.set_mode(PlayerMode::arp);
-              else if(player.get_mode() == PlayerMode::arp)
-                player.set_mode(PlayerMode::seq);
-              else if(player.get_mode() == PlayerMode::seq)
-                player.set_mode(PlayerMode::keyboard);
-
-              playermode_name(new_mode_name, player.get_mode());
-              lcd.clear();
-              lcd.print(new_mode_name);
               }
               break;
             case static_cast<int>(SynthControl::arp_note_length):
-                player.set_arp_note_len(0.002 + 0.25 * p.value / 127.f);
+                //player.set_arp_note_len(0.002 + 0.25 * p.value / 127.f);
               break;
             case static_cast<int>(SynthControl::arp_mode):
                 // Buttons always get a press and a release event
                 // only respond to the press
                 if(p.value != 127)
                   break;
-                player.next_arp_mode();
+                //player.next_arp_mode();
               break;
             default: 
               {
-                daisy::DaisySeed::Print("Control Received: Not Mapped -> %f\n", p.control_number);
+                LogPrint("Control Received: Not Mapped -> %f\n", p.control_number);
               }
               break;
           }
@@ -260,19 +269,22 @@ int main(void)
   lcd.init();
   lcd.backlight_on();
   lcd.print("Starting ...");
-  daisy::DaisySeed::Print("lcd started\n");
+  LogPrint("lcd started\n");
 
   samplerate = pod.AudioSampleRate();
-  static Seq<Player::poly> seq(samplerate);
+  static Seq seq(samplerate);
   seq.randomize();
-  static Player player(samplerate, seq);
+  static Player player(samplerate);
   static Controller controller(player, seq, lcd, pod);
 
   // Start stuff.
   pod.StartAdc();
   pod.StartAudio([]
       (daisy::AudioHandle::InterleavingInputBuffer in, daisy::AudioHandle::InterleavingOutputBuffer out, size_t sz)
-      {return player.AudioCallback(in, out, sz);});
+      {
+      seq.process();
+      return player.AudioCallback(in, out, sz);
+      });
 
   pod.midi.StartReceive();
   for(;;)
@@ -283,9 +295,9 @@ int main(void)
     {
       controller.HandleMidiMessage(pod.midi.PopEvent());
     }
-    player.update();
     if(controller.HandlePodControls()) {
       controller.redraw();
     }
+    seq.update(player);
   }
 }

@@ -2,6 +2,9 @@
 #include "daisy_pod.h"
 #include "daisysp.h"
 
+//#define LogPrint(...) daisy::DaisySeed::Print(__VA_ARGS__)
+#define LogPrint(...) 
+
 // commands
 #define LCD_CLEARDISPLAY 0x01
 #define LCD_RETURNHOME 0x02
@@ -148,7 +151,7 @@ void init() {
 	// SEE PAGE 45/46 FOR INITIALIZATION SPECIFICATION!
 	// according to datasheet, we need at least 40ms after power rises above 2.7V
 	// before sending commands. Arduino can turn on way befer 4.5V so we'll wait 50
-  daisy::DaisySeed::Print("LCD::init\n");
+  LogPrint("LCD::init\n");
 	daisy::System::Delay(50); 
   
 	// Now we pull both RS and R/W low to begin commands

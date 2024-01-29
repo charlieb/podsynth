@@ -4,12 +4,15 @@
 #include <array>
 #include <vector>
 #include "arp.h"
-#include "lcd.h"
+#include "player.h"
+
+#define LogPrint(...) daisy::DaisySeed::Print(__VA_ARGS__)
+//#define LogPrint(...) 
 
 enum StepMode { chord, arp };
 
 struct Step {
-  std::vector<daisy::NoteOnEvent> keys;
+  std::vector<daisy::NoteOnEvent> notes;
   StepMode mode{StepMode::chord};
   bool active{false};
   bool gate{true};
@@ -18,20 +21,23 @@ struct Step {
 };
 
 
-template <int P>
 class Seq {
   public:
-  static constexpr uint8_t nsteps{32};
+  static constexpr uint8_t nsteps{16};
 
   private:
   daisysp::Metro tick{};
   bool next{false};
+  Arp arp;
+  
 
   std::array<Step, nsteps> steps{};
   uint8_t current_step{0};
 
   public:
-  Seq(float samplerate) {
+  Seq(float samplerate) :
+  arp(samplerate, steps[0].notes)
+  {
     tick.Init(4.0, samplerate);
   }
   void next_step() { 
@@ -46,42 +52,47 @@ class Seq {
   Step& step() { return steps[current_step]; }
   Step& step(uint8_t s) { return steps[s]; }
 
-  void update(std::vector<daisy::NoteOnEvent>& keys, std::array<Note, P>& notes) {
+  void set_tempo(float freq) {
+    tick.SetFreq(freq);
+  }
+  void set_arp_tempo(float freq) {
+    tick.SetFreq(freq);
+  }
+
+  void update(Player& player) {
+    // Arp needs to change notes within the seq step
+    if(steps[current_step].mode == StepMode::arp) {
+      arp.update(player);
+    };
+
     if(!next) return;
     next = false;
 
     next_step();
 
-    // turn all the notes off
-    for(auto& note : notes) {
-      note.note_off();
-    }
+    if(steps[current_step].mode == StepMode::chord)
+      player.play_chord(steps[current_step].notes);
+    else
+      arp.set_notes(steps[current_step].notes);
 
-    daisy::DaisySeed::Print("Seq update: step %u\n", current_step);
-
-    keys.clear();
-    for(auto& key : steps[current_step].keys) {
-      keys.push_back(key);
-      daisy::DaisySeed::Print("Seq::update - note %u\n", key.note);
-    }
-
-    daisy::DaisySeed::Print("Seq::update - set %u / %u notes\n", keys.size(), steps[current_step].keys.size());
+    //LogPrint("Seq::update - set %u / %u notes\n", notes.size(), steps[current_step].notes.size());
 
   }
 
   void process() {
     if(!next)
       next = tick.Process();
+    arp.process();
   }
 
   void randomize() {
     for(auto& step : steps) {
       step.active = true;
-      step.keys.clear();
+      step.notes.clear();
       //daisy::NoteOnEvent
-      step.keys.push_back({.channel = 0, .note = 60, .velocity=127});
-      step.keys.push_back({.channel = 0, .note = 62, .velocity=127});
-      step.keys.push_back({.channel = 0, .note = 64, .velocity=127});
+      step.notes.push_back({.channel = 0, .note = 60, .velocity=127});
+      step.notes.push_back({.channel = 0, .note = 62, .velocity=127});
+      step.notes.push_back({.channel = 0, .note = 64, .velocity=127});
       step.mode = StepMode::arp;
     }
   }
