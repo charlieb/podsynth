@@ -43,8 +43,8 @@ class Note {
       osc1.SetFreq(freq);
       osc1.SetAmp((p.velocity / 127.0f));
       if(!gate) {
-        ad_vca.Trigger(daisysp::ReTriggerType::RESTART);
-        ad_vcf.Trigger(daisysp::ReTriggerType::RESTART);
+        ad_vca.Trigger(true);
+        ad_vcf.Trigger(true);
       }
       gate = true;
       note = p.note;
