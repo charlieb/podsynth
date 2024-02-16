@@ -18,28 +18,28 @@
 void wave_name(char *out, int val) {
   switch(val) {
     case 0:
-      strcpy(out, "wave_sin");
+      strcpy(out, "sin");
       break;
     case 1:
-      strcpy(out, "wave_tri");
+      strcpy(out, "tri");
       break;
     case 2:
-      strcpy(out, "wave_saw");
+      strcpy(out, "saw");
       break;
     case 3:
-      strcpy(out, "wave_ramp");
+      strcpy(out, "ramp");
       break;
     case 4:
-      strcpy(out, "wave_square");
+      strcpy(out, "square");
       break;
     case 5:
-      strcpy(out, "wave_polyblep_tri");
+      strcpy(out, "pb_tri");
       break;
     case 6:
-      strcpy(out, "wave_polyblep_saw");
+      strcpy(out, "pb_saw");
       break;
     case 7:
-      strcpy(out, "wave_polyblep_square");
+      strcpy(out, "pb_square");
       break;
     default:
       break;
@@ -94,6 +94,10 @@ class Player {
     }
   }
 
+  void play_rest() {
+    for(auto& note : notes)
+      note.note_off();
+  }
   void play_note(daisy::NoteOnEvent& key) {
     for(auto& note : notes)
       note.note_off();

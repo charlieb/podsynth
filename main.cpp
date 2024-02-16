@@ -7,6 +7,7 @@
 #include <cstdarg>
 #include <array>
 #include <vector>
+#include <cstring>
 
 #include "player.h"
 #include "arp.h"
@@ -18,6 +19,8 @@
 
 enum class SynthControl {
   wave_shape,
+  seq_step_length,
+  seq_pause_toggle,
   vcf_cutoff,
   vcf_resonance,
   vcf_envelope_depth,
@@ -34,6 +37,7 @@ enum class SynthControl {
   mode_toggle,
   arp_note_length,
   arp_mode,
+  seq_step_add_del,
   Count
 };
 
@@ -43,13 +47,13 @@ enum class SynthControl {
    o
  knob numbering   
        
- 113,?  74   71   76   77   93   73   75
-   O    o    o    o    o    o    o    o
-   1    2    3    4    5    6    7    8  
+ 113,112  74   71   76   77   93   73   75
+   O      o    o    o    o    o    o    o
+   1      2    3    4    5    6    7    8  
 
- 113,?  ?    19   16   17   91   79   72
-   O    o    o    o    o    o    o    o
-   9   10   11   12   13   14   15   16
+ 115,114  ?    19   16   17   91   79   72
+   O      o    o    o    o    o    o    o
+   9     10   11   12   13   14   15   16
 
  */
 
@@ -59,118 +63,150 @@ class Controller {
   // If you're hooking up your own controller, this is the place
   // to map your controls.
   std::unordered_map<uint8_t, SynthControl> midi_map {
-      {113, SynthControl::mode_toggle}, // Knob 1 press
+      {112, SynthControl::seq_step_add_del}, // Knob 1 turn (value 64 ignore, 63 down, 65 up)
+      {113, SynthControl::seq_pause_toggle}, // Knob 1 press
+      //{114, SynthControl::arp_mode}, // Knob 9 turn (value 64 ignore, 63 down, 65 up)
       {115, SynthControl::arp_mode}, // Knob 9 press
 
       {74, SynthControl::wave_shape}, // Knob 2
-      {18, SynthControl::oscillator_detune}, // Knob 10
+      {18, SynthControl::seq_step_length}, // Knob 10
       {71, SynthControl::vcf_cutoff}, // Knob 3
       {19, SynthControl::vcf_resonance}, // Knob 11
       {76, SynthControl::vcf_envelope_depth}, // Knob 4
       //{16, SynthControl::vca_bias}, // Knob 12
       {16, SynthControl::arp_note_length}, // Knob 12
       
-      {77, SynthControl::envelope_a_vca}, // Knob 5
-      {93, SynthControl::envelope_d_vca}, // Knob 6
-      {17, SynthControl::envelope_a_vcf}, // Knob 13
-      {91, SynthControl::envelope_d_vcf}, // Knob 14
+      {73, SynthControl::envelope_a_vca}, // Knob 5
+      {75, SynthControl::envelope_d_vca}, // Knob 6
+      {79, SynthControl::envelope_a_vcf}, // Knob 13
+      {72, SynthControl::envelope_d_vcf}, // Knob 14
   };
   daisy::Color red;
   daisy::Color green;
   daisy::Color blue;
+  float samplerate;
   Player& player;
   LCD& lcd;
   Seq& seq;
+  Arp& arp;
   daisy::DaisyPod& pod;
-  KeyTracker keys;
+  bool edit_mode = false;
 
-  // This is the current step for editing only, not for playing
-  uint8_t lcd_seq_step{0};
+  char lcd_top[17]{0,};
+  char lcd_bot[17]{0,};
 
   public:
-  Controller(Player& player, Seq& seq, LCD& lcd, daisy::DaisyPod& pod)
-    : player(player)
+  Controller(float samplerate, Player& player, Seq& seq, Arp& arp, LCD& lcd, daisy::DaisyPod& pod)
+    : samplerate(samplerate)
+    , player(player)
     , lcd(lcd)
     , seq(seq)
+    , arp(arp)
      ,pod(pod)  {
     red.Init(1, 0, 0);
     green.Init(0, 1, 0);
     blue.Init(0, 1, 0);
   }
 
-  char step_letter(Step& step) {
-    if(step.active) 
-      return step.mode == StepMode::chord ? 'C' : 'A';
-    else
-      return '_';
-  }
-
-  void redraw() {
-    char top_letters[Seq::nsteps + 1]{0,};
-    char bot_letters[Seq::nsteps + 1]{0,};
-
-    // A for Arp, C for Chord (or C(k)eys)
-    for(int i = 0; i < Seq::nsteps / 2; i++)
-      top_letters[i] = step_letter(seq.step(i));
-    for(int i = Seq::nsteps / 2; i < Seq::nsteps; i++)
-      bot_letters[i - Seq::nsteps / 2] = step_letter(seq.step(i));
-   
-    
+  void redraw() {    
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print(top_letters);
-    lcd.setCursor(0,1);
-    lcd.print(bot_letters);
+    static std::string tmp{""};
+    if(edit_mode) {
+      tmp.clear();
+      for(uint8_t note : seq.get_step().notes) {
+        if(note < 10)
+          tmp.push_back('0' + note);
+        else
+          tmp.push_back('A' + note - 10);
+      }
+      lcd.print(tmp);
+      tmp.clear();
 
-    lcd.setCursor(lcd_seq_step % LCD::cols, lcd_seq_step >= LCD::cols ? 1 : 0);
-    lcd.cursor_on();
-    lcd.blink_on();
+      lcd.setCursor(0, 1);
+      for(int i = 0; i < seq.get_num_steps(); i++)
+        if(i == seq.get_step_num())
+            lcd.print("^");
+        else
+            lcd.print("-");
+    }
+    else {
+      lcd.print(lcd_top);
+      lcd.setCursor(0,1);
+      lcd.print(lcd_bot);
+    }
+
+    //lcd.setCursor(lcd_seq_step % LCD::cols, lcd_seq_step >= LCD::cols ? 1 : 0);
+    //lcd.cursor_on();
+    //lcd.blink_on();
   }
 
   // Returns whether to redraw or not
   bool HandlePodControls() {
     pod.ProcessDigitalControls();
     bool redraw{false};
+
     // Encoder turns select the current step
     int32_t inc = pod.encoder.Increment();
-    if(inc) {
-      lcd_seq_step += inc;
-      lcd_seq_step = lcd_seq_step % Seq::nsteps;
+    if(inc && edit_mode) {
+      seq.step_inc(inc);
+      seq.set_arp(arp);
+      LogPrint("Step Inc %i -> %i\n", inc, seq.get_step_num());
       redraw = true;
-      LogPrint("Pod Encoder Increment -> %u\n", lcd_seq_step);
     }
     // Encoder Button Release captures the keys as the keys for this step
-    if(pod.encoder.FallingEdge()) {
-      LogPrint("Pod Encoder Click\n");
-      seq.step(lcd_seq_step).notes.clear();
-      for(auto k : keys.keys)
-        seq.step(lcd_seq_step).notes.push_back(k);
+    if(pod.encoder.RisingEdge()) {
+      edit_mode = !edit_mode;
+      if(edit_mode)
+        seq.pause();
+      else
+        seq.unpause();
       redraw = true;
     }
-    // Button 1 switches between arp and chord mode for that step
+    // Button 1 removes the last note from the current arp
     if(pod.button1.RisingEdge()) {
-      LogPrint("Pod Button1 Click\n");
-      seq.step(lcd_seq_step).mode = seq.step(lcd_seq_step).mode == StepMode::chord ? StepMode::arp : StepMode::chord;
+      if(edit_mode) {
+        seq.pop_note();
+        seq.set_arp(arp);
+      }
       redraw = true;
     }
-    // Button 2 switches step off and on
+    // Button 2 inserts a rest
     if(pod.button2.RisingEdge()) {
-      LogPrint("Pod Button2 Click\n");
-      seq.step(lcd_seq_step).active = !seq.step(lcd_seq_step).active;
+      if(edit_mode) {
+        seq.push_note(127);
+        seq.set_arp(arp);
+      }
+      //LogPrint("Pod Button2 Click\n");
+      //seq.step(lcd_seq_step).active = !seq.step(lcd_seq_step).active;
       redraw = true;
     }
     
     return redraw;
   }
 
-  void HandleMidiMessage(daisy::MidiEvent m)
+  bool HandleMidiMessage(daisy::MidiEvent m)
   {
+    bool redraw = false;
+    char tmp[25]{0,};
+    static daisy::MappedFloatValue vcf_freq_map{
+      100, samplerate / 3  + 1, 440,
+        daisy::MappedFloatValue::Mapping::log, "Hz"};
+
     switch(m.type) {
-      case daisy::NoteOn:
-        keys.press(m.AsNoteOn());
+      case daisy::NoteOn: 
+        {
+        //keys.press(m.AsNoteOn());
+          daisy::NoteOnEvent n{m.AsNoteOn()};
+          if(edit_mode) {
+            seq.push_note(n.note);
+            seq.set_arp(arp);
+          }
+          redraw = true;
+        }
         break;
       case daisy::NoteOff: 
-        keys.release(m.AsNoteOn());
+        //keys.release(m.AsNoteOn());
         break;
       case daisy::ControlChange: 
         {
@@ -178,28 +214,67 @@ class Controller {
           LogPrint("Control Received:\t%d\t%d -> %i / %i\n", p.control_number, p.value, midi_map[p.control_number], SynthControl::wave_shape);
           switch(static_cast<int>(midi_map[p.control_number])) {
             case static_cast<int>(SynthControl::wave_shape): 
-              player.set_wave_shape(static_cast<uint8_t>(8 * p.value / 127.0));
+              {
+              int wave_num{static_cast<uint8_t>(8 * p.value / 127.0)};
+              wave_name(tmp, wave_num);
+              std::sprintf(lcd_bot, "Shape %s", tmp);
+              redraw = true;
+              player.set_wave_shape(wave_num);
+              }
+              break;
+            case static_cast<int>(SynthControl::seq_pause_toggle): 
+              {
+                seq.pause_toggle();
+              }
+              break;
+            case static_cast<int>(SynthControl::seq_step_length): 
+              {
+                seq.set_tempo(0.002 + 5. * p.value / 127.f);
+                std::sprintf(lcd_top, "Seq Tempo %.3i", static_cast<int>(1000 * (0.002 + 5. * p.value / 127.f)));
+                redraw = true;
+              }
               break;
             case static_cast<int>(SynthControl::oscillator_detune): 
               //player.set_oscillator_detune(p.value);
               break;
             case static_cast<int>(SynthControl::vcf_cutoff): 
+              {
+                vcf_freq_map.SetFrom0to1(p.value / 127.0);
+              std::sprintf(lcd_top, "VCF C %i", static_cast<int>(vcf_freq_map.Get()));
+              redraw = true;
               player.set_vcf_cutoff(p.value / 127.0);
+              }
               break;
             case static_cast<int>(SynthControl::vcf_resonance):
+              {
+              std::sprintf(lcd_top, "VCF R %.3i", static_cast<int>(1000 * (1. + p.value) / 129.0));
+              redraw = true;
               player.set_vcf_resonance((1.0 + p.value) / 129.0);
+              }
               break;
             case static_cast<int>(SynthControl::vcf_envelope_depth):
+              {
+              std::sprintf(lcd_top, "VCF Env %.3i", static_cast<int>(1000 * p.value / 127.0));
+              redraw = true;
               player.set_vcf_envelope_depth(p.value / 127.0);
+              }
               break;
             case static_cast<int>(SynthControl::vca_bias):
               player.set_vca_bias(p.value / 127.0);
               break;
             case static_cast<int>(SynthControl::envelope_a_vca):
-              player.set_envelope_a_vca(p.value / 127.0);
+              {
+              std::sprintf(lcd_top, "VCA Env A %.3i", static_cast<int>(1000 * p.value / 127.0));
+              redraw = true;
+              player.set_envelope_a_vca(0.007 + p.value / 127.0);
+              }
               break;
             case static_cast<int>(SynthControl::envelope_d_vca):
-              player.set_envelope_d_vca(p.value / 127.0);
+              {
+              std::sprintf(lcd_top, "VCA Env D %.3i", static_cast<int>(1000 * p.value / 127.0));
+              redraw = true;
+              player.set_envelope_d_vca(0.007 + p.value / 127.0);
+              }
               break;
             case static_cast<int>(SynthControl::envelope_s_vca):
               player.set_envelope_s_vca(p.value / 127.0);
@@ -208,10 +283,18 @@ class Controller {
               player.set_envelope_r_vca(p.value / 127.0);
               break;
             case static_cast<int>(SynthControl::envelope_a_vcf):
-              player.set_envelope_a_vcf(p.value / 127.0);
+              {
+              std::sprintf(lcd_top, "VCF Env A %.3i", static_cast<int>(1000 * p.value / 127.0));
+              redraw = true;
+              player.set_envelope_a_vcf(0.007 + p.value / 127.0);
+              }
               break;
             case static_cast<int>(SynthControl::envelope_d_vcf):
-              player.set_envelope_d_vcf(p.value / 127.0);
+              {
+              std::sprintf(lcd_top, "VCF Env D %.3i", static_cast<int>(1000 * p.value / 127.0));
+              redraw = true;
+              player.set_envelope_d_vcf(0.007 + p.value / 127.0);
+              }
               break;
             case static_cast<int>(SynthControl::envelope_s_vcf):
               player.set_envelope_s_vcf(p.value / 127.0);
@@ -228,14 +311,34 @@ class Controller {
               }
               break;
             case static_cast<int>(SynthControl::arp_note_length):
-                //player.set_arp_note_len(0.002 + 0.25 * p.value / 127.f);
+              {
+                arp.set_note_len(0.002 + 0.25 * p.value / 127.f);
+                std::sprintf(lcd_top, "Arp Len %.3i", static_cast<int>(1000 * (0.002 + 0.25 * p.value / 127.f)));
+                redraw = true;
+              }
               break;
             case static_cast<int>(SynthControl::arp_mode):
+              {
                 // Buttons always get a press and a release event
                 // only respond to the press
                 if(p.value != 127)
                   break;
-                //player.next_arp_mode();
+                arp.next_mode();
+                std::sprintf(lcd_bot, "Arp ");
+                arp.mode_name(lcd_bot + 4);
+                redraw = true;
+              }
+              break;
+            case static_cast<int>(SynthControl::seq_step_add_del):
+              {
+                if(p.value == 65) {
+                  seq.add_step();
+                } else if(p.value == 63) {
+                  seq.del_step();
+                }
+                LogPrint("Step add/remove %i\n", seq.get_num_steps());
+                redraw = true;
+              }
               break;
             default: 
               {
@@ -247,6 +350,7 @@ class Controller {
         }
       default: break;
     }
+    return redraw;
   }
 };
 
@@ -264,7 +368,8 @@ int main(void)
   daisy::System::Delay(250);
   pod.seed.StartLog();
 
-  // Synthesis
+  constexpr uint32_t lcd_delay_ms{250};
+  uint32_t last_t{0};
   LCD lcd{};
   lcd.init();
   lcd.backlight_on();
@@ -273,9 +378,10 @@ int main(void)
 
   samplerate = pod.AudioSampleRate();
   static Seq seq(samplerate);
-  seq.randomize();
+  static Arp arp(samplerate); 
+  arp.set_note_len(0.0125);
   static Player player(samplerate);
-  static Controller controller(player, seq, lcd, pod);
+  static Controller controller(samplerate, player, seq, arp, lcd, pod);
 
   // Start stuff.
   pod.StartAdc();
@@ -283,21 +389,27 @@ int main(void)
       (daisy::AudioHandle::InterleavingInputBuffer in, daisy::AudioHandle::InterleavingOutputBuffer out, size_t sz)
       {
       seq.process();
+      arp.process();
       return player.AudioCallback(in, out, sz);
       });
 
   pod.midi.StartReceive();
+  bool redraw{false};
   for(;;)
   {
     pod.midi.Listen();
     // Handle MIDI Events
     while(pod.midi.HasEvents())
     {
-      controller.HandleMidiMessage(pod.midi.PopEvent());
+      redraw |= controller.HandleMidiMessage(pod.midi.PopEvent());
     }
-    if(controller.HandlePodControls()) {
+    redraw |= controller.HandlePodControls();
+    if(redraw && daisy::System::GetNow() > last_t + lcd_delay_ms) {
       controller.redraw();
+      redraw = false;
+      last_t = daisy::System::GetNow();
     }
-    seq.update(player);
+    arp.update(player);
+    seq.update(player, arp);
   }
 }

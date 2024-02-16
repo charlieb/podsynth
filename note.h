@@ -13,7 +13,6 @@ class Note {
 
     float last_sig{-1.};
     bool last_gate{false};
-    std::vector<float> last_vcas{};
 
   public:
     daisysp::Oscillator osc1;
@@ -34,8 +33,6 @@ class Note {
 
           ad_vca.Init(samplerate);
           ad_vcf.Init(samplerate);
-
-          last_vcas.reserve(1000);
         };
 
     bool note_match(daisy::NoteOnEvent& p) { return note == p.note; }
@@ -46,11 +43,8 @@ class Note {
       osc1.SetFreq(freq);
       osc1.SetAmp((p.velocity / 127.0f));
       if(!gate) {
-        for(auto vca : last_vcas)
-          LogPrint("VCA: %i\n", static_cast<int>(1000. * vca));
-        last_vcas.clear();
-        ad_vca.Trigger();
-        ad_vcf.Trigger();
+        ad_vca.Trigger(daisysp::ReTriggerType::RESTART);
+        ad_vcf.Trigger(daisysp::ReTriggerType::RESTART);
       }
       gate = true;
       note = p.note;
@@ -58,11 +52,6 @@ class Note {
 
     void note_off() {
       gate = false;
-    }
-
-    void retrigger() {
-      ad_vcf.Trigger();
-      ad_vca.Trigger();
     }
 
     void set_wave_shape(uint8_t wave_num) {
@@ -75,13 +64,11 @@ class Note {
     void set_vca_decay(float t) { ad_vca.SetTime(daisysp::AdEnvSegment::ADENV_SEG_DECAY, t); }
 
     float process(float vcf_freq, float vcf_res, float vcf_env_depth) {
+      if(!gate) return 0.;
       float vca_env = ad_vca.Process();
-      if(last_vcas.size() < 1000) {
-        last_vcas.push_back(vca_env);
-      }
       if(!ad_vca.IsRunning()) return 0.;
 
-      daisy::MappedFloatValue vcf_freq_map{
+      static daisy::MappedFloatValue vcf_freq_map{
         100, samplerate / 3  + 1, 440,
         daisy::MappedFloatValue::Mapping::log, "Hz"};
       float vcf_env = ad_vcf.Process();
