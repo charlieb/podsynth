@@ -1,4 +1,5 @@
 #pragma once
+#include "Filters/moogladder.h"
 #include "daisy_pod.h"
 #include "daisysp.h"
 #include <math.h>
@@ -16,6 +17,8 @@ class Note {
 
   public:
     daisysp::Oscillator osc1;
+    daisysp::Oscillator osc2;
+    float detune = 0.; // freq difference between osc1 and osc2
     bool gate{false};
     uint8_t note{0};
 
@@ -41,7 +44,9 @@ class Note {
     void note_on(daisy::NoteOnEvent& p) {
       float freq{daisysp::mtof(p.note)}; 
       osc1.SetFreq(freq);
-      osc1.SetAmp((p.velocity / 127.0f));
+      osc1.SetAmp(p.velocity / 127.0f);
+      osc2.SetFreq(freq * detune);
+      osc2.SetAmp(p.velocity / 127.0f);
       if(!gate) {
         ad_vca.Trigger(true);
         ad_vcf.Trigger(true);
@@ -56,12 +61,14 @@ class Note {
 
     void set_wave_shape(uint8_t wave_num) {
       osc1.SetWaveform(wave_num);
+      osc2.SetWaveform(wave_num);
     }
 
     void set_vcf_attack(float t) { ad_vcf.SetTime(daisysp::AdEnvSegment::ADENV_SEG_ATTACK, t); }
     void set_vca_attack(float t) { ad_vca.SetTime(daisysp::AdEnvSegment::ADENV_SEG_ATTACK, t); }
     void set_vcf_decay(float t) { ad_vcf.SetTime(daisysp::AdEnvSegment::ADENV_SEG_DECAY, t); }
     void set_vca_decay(float t) { ad_vca.SetTime(daisysp::AdEnvSegment::ADENV_SEG_DECAY, t); }
+    void set_detune(float t) { detune = t; }; // takes effect next note_on
 
     float process(float vcf_freq, float vcf_res, float vcf_env_depth) {
       if(!gate) return 0.;
@@ -78,7 +85,7 @@ class Note {
       flt.SetRes(vcf_res);
 
       // Apply the processing values
-      float sig = osc1.Process();
+      float sig = (osc1.Process() + osc2.Process()) / 2.;
       sig = flt.Process(sig);
       sig *= vca_env;
       return sig;
