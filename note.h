@@ -31,6 +31,9 @@ class Note {
           osc1.Init(samplerate);
           osc1.SetWaveform(daisysp::Oscillator::WAVE_POLYBLEP_SAW);
           osc1.SetAmp(1.0);
+          osc2.Init(samplerate);
+          osc2.SetWaveform(daisysp::Oscillator::WAVE_POLYBLEP_SAW);
+          osc2.SetAmp(1.0);
 
           flt.Init(samplerate);
 

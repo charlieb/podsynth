@@ -60,13 +60,14 @@ class KeyTracker {
   }
 };
 
+static uint32_t DSY_SDRAM_BSS reverb_heap[sizeof(daisysp::ReverbSc)];
+
 class Player {
   public:
-  static constexpr size_t poly{2};
+  static constexpr size_t poly{1};
 
   private:
   float vcf_env_depth = 0.;
-  float vca_bias = 0.;
   float vcf_freq = 0;
   float vcf_res = 0;
   float samplerate = 0;
@@ -75,12 +76,12 @@ class Player {
 
   daisysp::DelayLine<float, 48000> delay;
   float delay_mix{0};
-  daisysp::Bitcrush crush;
   daisysp::Overdrive drive;
-  daisysp::ReverbSc reverb;
+  daisysp::ReverbSc* reverb = new(reverb_heap) daisysp::ReverbSc();
+  float reverb_wet{0.75};
 
   // This initlizer kinda sucks, boo c++
-  std::array<Note, poly> notes{{{0},{0}}}; //,{0},{0},{0},{0}}};
+  std::array<Note, poly> notes{{{0}}}; //,{0},{0},{0},{0}}};
 
   public:
 
@@ -90,9 +91,9 @@ class Player {
       note = n;
     }
     delay.Init();
-    crush.Init(samplerate);
-    drive.Init();
-    reverb.Init(samplerate);
+    reverb->Init(samplerate);
+    reverb->SetLpFreq(18000.0f);
+    reverb->SetFeedback(0.85f);
   }
 
   void play_chord(std::vector<daisy::NoteOnEvent>& keys) {
@@ -129,10 +130,10 @@ class Player {
       note_total += delay.Read() * delay_mix;
       note_total /= 1. + delay_mix;
       delay.Write(note_total);
-      reverb.Process(note_total, note_total, &note_total, &note_total);
-      //note_total = drive.Process(note_total);
-      //note_total = crush.Process(note_total);
-      out[i] = out[i + 1] = note_total;
+      float rvb_out1{0}, rvb_out2{0};
+      reverb->Process(note_total, note_total, &rvb_out1, &rvb_out2);
+      out[i] = rvb_out1 * reverb_wet + note_total * (1 - reverb_wet);
+      out[i + 1] = rvb_out2 * reverb_wet + note_total * (1 - reverb_wet);
     }
   }
 
@@ -158,10 +159,6 @@ class Player {
     LogPrint("Control Received: vcf_env_depth -> 0.%i\n", static_cast<int>(1000*depth));
     vcf_env_depth = depth;
   }
-  void set_vca_bias(float bias) {
-    LogPrint("Control Received: vca_bias -> %f\n", vca_bias);
-    vca_bias = bias;
-  }
   void set_envelope_a_vca(float val) {
     if(val <= 0.007)
       val = 0.007;
@@ -175,16 +172,6 @@ class Player {
     LogPrint("Control Received: VCA Decay -> 0.%03i\n", static_cast<int>(1000 * val));
     for(auto& note : notes)
       note.set_vca_decay(val); // secs
-  }
-  void set_envelope_s_vca(float val) {
-    LogPrint("Control Received: VCA Sustain -> 0.%03i\n", static_cast<int>(1000 * val));
-    //for(auto& note : notes)
-    //  note.adsr_vca.SetSustainLevel(val);
-  }
-  void set_envelope_r_vca(float val) {
-    LogPrint("Control Received: VCA Release -> 0.%03i\n", static_cast<int>(1000 * val));
-    //for(auto& note : notes)
-    //  note.adsr_vca.SetReleaseTime(val); // secs
   }
   void set_envelope_a_vcf(float val) {
     if(val <= 0.007)
@@ -200,16 +187,6 @@ class Player {
     for(auto& note : notes)
       note.set_vcf_decay(val); // secs
   }
-  void set_envelope_s_vcf(float val) {
-    LogPrint("Control Received: VCF Sustain -> 0.%03i\n", static_cast<int>(1000 * val));
-    //for(auto& note : notes)
-    //  note.adsr_vcf.SetSustainLevel(val);
-  }
-  void set_envelope_r_vcf(float val) {
-    LogPrint("Control Received: VCF Release -> 0.%03i\n", static_cast<int>(1000 * val));
-    //for(auto& note : notes)
-    //  note.adsr_vcf.SetReleaseTime(val); // secs
-  }
   void set_delay_time(float val) {
     LogPrint("Control Received: Delay Delay -> 0.%03i\n", static_cast<int>(1000 * val));
     delay.SetDelay(val);
@@ -218,29 +195,21 @@ class Player {
     LogPrint("Control Received: Delay Mix -> 0.%03i\n", static_cast<int>(1000 * val));
     delay_mix = val;
     }
-  void set_crush_depth(int val) {
-    LogPrint("Control Received: Crush Depth -> 0.%03i\n", val);
-    crush.SetBitDepth(val);
-    }
-  void set_crush_rate(float val) {
-    LogPrint("Control Received: Crush Rate -> 0.%03i\n", static_cast<int>(1000 * val));
-    crush.SetCrushRate(val);
-    }
-  void set_drive(float val) {
-    LogPrint("Control Received: Drive -> 0.%03i\n", static_cast<int>(1000 * val));
-    drive.SetDrive(val);
-    }
   void set_reverb_damp_freq(float val) {
     static daisy::MappedFloatValue rv_freq_map{
       100, samplerate / 3  + 1, 440,
         daisy::MappedFloatValue::Mapping::log, "Hz"};
     rv_freq_map.SetFrom0to1(val);
     LogPrint("Control Received: Reverb Freq -> 0.%03i\n", static_cast<int>(1000 * rv_freq_map.Get()));
-    reverb.SetLpFreq(val);
+    reverb->SetLpFreq(val);
   }
   void set_reverb_feedback(float val) {
     LogPrint("Control Received: Reverb Feedback -> 0.%03i\n", static_cast<int>(1000 * val));
-    reverb.SetFeedback(val);
+    reverb->SetFeedback(val);
+  }
+  void set_reverb_wet(float val) {
+    LogPrint("Control Received: Reverb wet -> 0.%03i\n", static_cast<int>(1000 * val));
+    reverb_wet = val;
   }
   void set_detune(float val) {
     LogPrint("Control Received: Detune -> 0.%03i\n", static_cast<int>(1000 * val));

@@ -1,5 +1,7 @@
 #include "daisy_pod.h"
 #include "daisysp.h"
+#include <math.h>
+#include <string>
 #include <util/MappedValue.h>
 #include <cstdio>
 #include <string.h>
@@ -24,23 +26,16 @@ enum class SynthControl {
   vcf_cutoff,
   vcf_resonance,
   vcf_envelope_depth,
-  vca_bias,
   delay_time,
   delay_mix,
-  bitcrush_rate,
-  bitcrush_depth,
-  drive,
   reverb_damp_freq,
   reverb_feedback,
+  reverb_wet,
   oscillator_detune,
   envelope_a_vca,
   envelope_d_vca,
-  envelope_s_vca, // Not currently used
-  envelope_r_vca, // Not currently used
   envelope_a_vcf,
   envelope_d_vcf,
-  envelope_s_vcf, // Not currently used
-  envelope_r_vcf, // Not currently used
   mode_toggle,
   arp_note_length,
   arp_mode,
@@ -88,7 +83,7 @@ class Controller {
       {17, SynthControl::delay_time}, // Knob 13
       
       {91, SynthControl::reverb_feedback}, // Knob 6
-      {93, SynthControl::reverb_damp_freq}, // Knob 14
+      {93, SynthControl::reverb_wet}, // Knob 14
 
       {73, SynthControl::envelope_a_vca}, // Knob 7
       {79, SynthControl::envelope_a_vcf}, // Knob 15
@@ -123,7 +118,7 @@ class Controller {
     red.Init(1, 0, 0);
     green.Init(0, 1, 0);
     blue.Init(0, 1, 0);
-    detune.Init(pod.knob1, 1., 3., daisy::Parameter::LINEAR);
+    detune.Init(pod.knob1, 1., 2., daisy::Parameter::LINEAR);
     //p_inversion.Init(hw.knob2, 0, 5, Parameter::LINEAR);
   }
 
@@ -169,7 +164,9 @@ class Controller {
     // Knob 1 is for osc detune
     static float dt{0};
     float new_dt = detune.Process();
-    if(dt != new_dt) {
+    if(fabs(dt - new_dt) > 0.001) {
+      std::sprintf(lcd_top, "Detune %.3i", static_cast<int>(1000 * dt));
+      redraw = true;
       dt = new_dt;
       player.set_detune(dt);
     }
@@ -287,9 +284,6 @@ class Controller {
               player.set_vcf_envelope_depth(p.value / 127.0);
               }
               break;
-            case static_cast<int>(SynthControl::vca_bias):
-              player.set_vca_bias(p.value / 127.0);
-              break;
             case static_cast<int>(SynthControl::envelope_a_vca):
               {
               std::sprintf(lcd_top, "VCA Env A %.3i", static_cast<int>(1000 * p.value / 127.0));
@@ -304,12 +298,6 @@ class Controller {
               player.set_envelope_d_vca(0.007 + p.value / 127.0);
               }
               break;
-            case static_cast<int>(SynthControl::envelope_s_vca):
-              player.set_envelope_s_vca(p.value / 127.0);
-              break;
-            case static_cast<int>(SynthControl::envelope_r_vca):
-              player.set_envelope_r_vca(p.value / 127.0);
-              break;
             case static_cast<int>(SynthControl::envelope_a_vcf):
               {
               std::sprintf(lcd_top, "VCF Env A %.3i", static_cast<int>(1000 * p.value / 127.0));
@@ -323,12 +311,6 @@ class Controller {
               redraw = true;
               player.set_envelope_d_vcf(0.007 + p.value / 127.0);
               }
-              break;
-            case static_cast<int>(SynthControl::envelope_s_vcf):
-              player.set_envelope_s_vcf(p.value / 127.0);
-              break;
-            case static_cast<int>(SynthControl::envelope_r_vcf):
-              player.set_envelope_r_vcf(p.value / 127.0);
               break;
             case static_cast<int>(SynthControl::mode_toggle):
               {
@@ -383,28 +365,6 @@ class Controller {
                 redraw = true;
               }
               break;
-            case static_cast<int>(SynthControl::bitcrush_depth):
-              {
-                // Delay time is in samples
-                player.set_crush_depth(16 * (p.value / 127.0));
-                std::sprintf(lcd_top, "Crush D %.3i", static_cast<int>(16 * p.value / 127.));
-                redraw = true;
-              }
-              break;
-            case static_cast<int>(SynthControl::bitcrush_rate):
-              {
-                player.set_crush_rate(samplerate * p.value / 127.0);
-                std::sprintf(lcd_top, "Crush Rate %.3i", static_cast<int>(1000 * p.value / 127.f));
-                redraw = true;
-              }
-              break;
-            case static_cast<int>(SynthControl::drive):
-              {
-                player.set_drive(p.value / 127.0);
-                std::sprintf(lcd_top, "Drive %.3i", static_cast<int>(1000 * p.value / 127.f));
-                redraw = true;
-              }
-              break;
             case static_cast<int>(SynthControl::reverb_feedback):
               {
                 static daisy::MappedFloatValue rv_freq_map{
@@ -418,8 +378,15 @@ class Controller {
               break;
             case static_cast<int>(SynthControl::reverb_damp_freq):
               {
-                player.set_reverb_damp_freq(p.value / 127.0);
+                //player.set_reverb_damp_freq(p.value / 127.0);
                 std::sprintf(lcd_top, "Rev Damp %.3i", static_cast<int>(1000 * p.value / 127.f));
+                redraw = true;
+              }
+              break;
+            case static_cast<int>(SynthControl::reverb_wet):
+              {
+                player.set_reverb_wet(p.value / 127.0);
+                std::sprintf(lcd_top, "Rev wet %.3i", static_cast<int>(1000 * p.value / 127.f));
                 redraw = true;
               }
               break;
