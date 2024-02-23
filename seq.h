@@ -6,8 +6,8 @@
 #include "arp.h"
 #include "player.h"
 
-#define LogPrint(...) daisy::DaisySeed::Print(__VA_ARGS__)
-//#define LogPrint(...) 
+//#define LogPrint(...) daisy::DaisySeed::Print(__VA_ARGS__)
+#define LogPrint(...) 
 
 struct Step {
   std::vector<uint8_t> notes;

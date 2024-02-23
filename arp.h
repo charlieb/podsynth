@@ -9,8 +9,8 @@
 #include "note.h"
 #include "player.h"
 
-#define LogPrint(...) daisy::DaisySeed::Print(__VA_ARGS__)
-//#define LogPrint(...) 
+//#define LogPrint(...) daisy::DaisySeed::Print(__VA_ARGS__)
+#define LogPrint(...) 
 
 enum class ArpMode{
   asis,

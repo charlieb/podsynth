@@ -1,6 +1,6 @@
 #include "daisy_pod.h"
 #include "daisysp.h"
-#include <math.h>
+#include <cmath>
 #include <string>
 #include <util/MappedValue.h>
 #include <cstdio>
@@ -16,8 +16,25 @@
 #include "lcd.h"
 #include "seq.h"
 
-#define LogPrint(...) daisy::DaisySeed::Print(__VA_ARGS__)
-//#define LogPrint(...) 
+//#define LogPrint(...) daisy::DaisySeed::Print(__VA_ARGS__)
+#define LogPrint(...) 
+
+class TempoUtils
+{
+public:
+  static float tempo_to_freq(uint8_t tempo) { return tempo / 60.0f; }
+  static uint8_t freq_to_tempo(float freq) { return freq * 60.0f; }
+  static float bpm_to_freq(uint32_t tempo) { return tempo / 60.0f; }
+  static uint32_t ms_to_bpm(uint32_t ms) { return 60000 / ms; }
+  static uint32_t us_to_bpm(uint32_t us) { return 60000000 / us; }
+
+  static uint32_t fus_to_bpm(uint32_t us)
+  {
+    float fus = static_cast<float>(us);
+    float val = std::roundf(60000000.0f / fus);
+    return static_cast<uint32_t>(val);
+  }
+};
 
 enum class SynthControl {
   wave_shape,
@@ -404,6 +421,53 @@ class Controller {
   }
 };
 
+void AudioCallback(daisy::AudioHandle::InterleavingInputBuffer in,
+    daisy::AudioHandle::InterleavingOutputBuffer out, size_t size,
+    Player& player, Arp& arp, Seq& seq) {
+
+  constexpr int TEMPO_MIN{30};
+  constexpr int TEMPO_DEFAULT{120};
+  constexpr int TEMPO_MAX{240};
+
+  constexpr float threshold = 0.20f;
+
+  // sync tempo variables
+  static uint32_t prev_timestamp = 0;
+  static uint8_t tempo = TEMPO_DEFAULT;
+  static float left_cached = 0;
+
+  for (size_t i = 0; i < size; i += 2) {
+    // left - sync
+    float left = in[i];
+    //float right = in[i+1];
+
+    //hw.led1.Set(left, left, left);
+    //hw.led2.Set(right, right, right);
+    //hw.UpdateLeds();
+
+    if (fabs(left - left_cached) > threshold) {
+      // detect sync raising edge
+      // Single pulse, 2.5ms long, with an amplitude of 1V above ground reference.
+      if (left_cached < threshold && left > threshold) {
+        uint32_t now = daisy::System::GetUs();
+        uint32_t diff = now - prev_timestamp;
+        uint32_t bpm = TempoUtils::fus_to_bpm(diff) / 2;
+
+        if (bpm >= TEMPO_MIN && bpm <= TEMPO_MAX) {
+          tempo = bpm;
+          arp.set_note_len(60. / (tempo * 8.));
+        }
+        prev_timestamp = now;
+      }
+      left_cached = left;
+    }
+
+  }
+
+  seq.process();
+  arp.process();
+  player.AudioCallback(in, out, size);
+}
 
 
 // Main -- Init, and Midi Handling
@@ -435,14 +499,10 @@ int main(void)
 
   // Start stuff.
   pod.StartAdc();
-  pod.StartAudio([]
-      (daisy::AudioHandle::InterleavingInputBuffer in, daisy::AudioHandle::InterleavingOutputBuffer out, size_t sz)
-      {
-      seq.process();
-      arp.process();
-      return player.AudioCallback(in, out, sz);
-      });
-
+  pod.StartAudio([](daisy::AudioHandle::InterleavingInputBuffer in,
+                    daisy::AudioHandle::InterleavingOutputBuffer out,
+                    size_t size)
+      {AudioCallback(in, out, size, player, arp, seq);});
   pod.midi.StartReceive();
   bool redraw{false};
   for(;;)

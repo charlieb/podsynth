@@ -10,8 +10,8 @@
 #include <vector>
 #include "note.h"
 
-#define LogPrint(...) daisy::DaisySeed::Print(__VA_ARGS__)
-//#define LogPrint(...) 
+//#define LogPrint(...) daisy::DaisySeed::Print(__VA_ARGS__)
+#define LogPrint(...) 
 
 // Printing Functions
 
@@ -68,7 +68,7 @@ class Player {
 
   private:
   float vcf_env_depth = 0.;
-  float vcf_freq = 0;
+  float vcf_freq = 5000;
   float vcf_res = 0;
   float samplerate = 0;
 
@@ -78,7 +78,9 @@ class Player {
   float delay_mix{0};
   daisysp::Overdrive drive;
   daisysp::ReverbSc* reverb = new(reverb_heap) daisysp::ReverbSc();
-  float reverb_wet{0.75};
+  float reverb_wet{0.0};
+  float reverb_gain{0.25}; // Reverb output is SUPER LOUD so cut it
+  //float gain{2.};
 
   // This initlizer kinda sucks, boo c++
   std::array<Note, poly> notes{{{0}}}; //,{0},{0},{0},{0}}};
@@ -118,7 +120,7 @@ class Player {
   }
 
   // AUDIO CALLBACK
-  void AudioCallback(daisy::AudioHandle::InterleavingInputBuffer  in,
+  void AudioCallback(daisy::AudioHandle::InterleavingInputBuffer in,
       daisy::AudioHandle::InterleavingOutputBuffer out,
       size_t size)
   {
@@ -132,6 +134,11 @@ class Player {
       delay.Write(note_total);
       float rvb_out1{0}, rvb_out2{0};
       reverb->Process(note_total, note_total, &rvb_out1, &rvb_out2);
+      // Apply gain after reverb processing because rvb feedback makes it 
+      // very loud
+      //note_total *= gain;
+      rvb_out1 *= reverb_gain;
+      rvb_out2 *= reverb_gain;
       out[i] = rvb_out1 * reverb_wet + note_total * (1 - reverb_wet);
       out[i + 1] = rvb_out2 * reverb_wet + note_total * (1 - reverb_wet);
     }
